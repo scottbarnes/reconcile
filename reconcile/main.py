@@ -2,7 +2,9 @@ import csv  # TODO: Decide between CSV and JSON for everything?
 import os
 import sqlite3
 import sys
-from typing import Any, Iterator, Optional, Tuple, Union
+from collections.abc import Iterator
+from inspect import cleandoc
+from typing import Union
 
 import fire
 import orjson
@@ -15,6 +17,7 @@ from utils import nuller, query_output_writer
 
 # Read the file paths from environment variables first, otherwise try to use the
 # filenames from the download scripts.
+# TODO: Should these go in a settings file? Address when looking at pathlib.
 files_dir = os.getcwd() + "/files"
 IA_PHYSICAL_DIRECT_DUMP = os.environ.get(
     "IA_PHYSICAL_DIRECT_DUMP", f"{files_dir}/ia_physical_direct_latest.tsv"
@@ -50,7 +53,7 @@ class Reconciler:
 
     def create_db(
         self, db: Database, ia_dump: str = IA_PHYSICAL_DIRECT_DUMP
-    ):  # , db_name: str = SQLITE_DB):
+    ) -> None:  # , db_name: str = SQLITE_DB):
         """
         Populate the DB with IA data from the [date]_inlibrary_direct.tsv
         dump, available https://archive.org/download/ia-abc-historical-data.
@@ -65,7 +68,7 @@ class Reconciler:
         # Create the reconcile table.
         try:
             db.execute(
-                "CREATE TABLE reconcile (ia_id TEXT,  ia_ol_edition_id TEXT, \
+                "CREATE TABLE reconcile (ia_id TEXT, ia_ol_edition_id TEXT, \
                            ia_ol_work_id TEXT, ol_edition_id TEXT, ol_aid TEXT)"
             )
             # Indexing ia_id massively speeds up adding OL records.
@@ -78,8 +81,12 @@ class Reconciler:
         with open(ia_dump, newline="") as file:
             reader = csv.reader(file, delimiter="\t")
             for row in reader:
+                # TODO: Is this 'better' than try/except?
+                if len(row) < 4:
+                    continue
+
                 # Get the IDs, though some are empty strings.
-                # The row is in the format: id   ia_id   ia_ol_edition   ia_ol_work
+                # Format: id<tab>ia_id<tab>ia_ol_edition<tab>ia_ol_work
                 ia_id, ia_ol_edition_id, ia_ol_work_id = row[1], row[2], row[3]
 
                 # TODO: Is there any point to setting values to Null rather
@@ -94,9 +101,7 @@ class Reconciler:
                         None,
                     ),
                 )
-
         db.commit()
-        return
 
     def parse_ol_dump_and_write_ids(
         self, in_file: str = OL_EDITIONS_DUMP, out_file: str = OL_EDITIONS_DUMP_PARSED
@@ -128,6 +133,9 @@ class Reconciler:
                 if result := d.get("works"):
                     ol_work_id = result[0].get("key").split("/")[-1]
 
+                # TODO: When reading this an edition with multiple works note True in a
+                # new DB key has_multiple_works or something. Everything else would be
+                # False or NULL. Then query could read True ones.
                 ol_ocaid = d.get("ocaid")
                 # if d.get("works") and len(d.get("works")) > 1:
                 #     print(f"{ol_edition_id} has mork than one work")
@@ -135,9 +143,6 @@ class Reconciler:
 
                 if ol_edition_id and ol_ocaid:
                     writer.writerow([ol_edition_id, ol_work_id, ol_ocaid])
-
-            # print(f"There are {len(has_multiple_works)} editions with multiple works.")
-            # print(f"They are: {has_multiple_works}")
 
     def insert_ol_data_from_tsv(
         self, db: Database, parsed_ol_data: str = OL_EDITIONS_DUMP_PARSED
@@ -191,7 +196,7 @@ class Reconciler:
 
     def get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
         self, db: Database, out_file: str = REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
-    ):
+    ) -> None:
         """
         Get rows where Open Library has an Internet Archive OCAID, but for that
         Internet Archive record there is no Open Library edition.
@@ -203,7 +208,11 @@ class Reconciler:
         query_output_writer(result, out_file)
 
         print(
-            f"Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition: {count}"
+            cleandoc(
+                f"""Total Internet Archive records where an Open Library Edition
+                     has an OCAID but Internet Archive has no Open Library Edition:
+                     {count}"""
+            )
         )
         print(f"De-duplicated count: {dedupe_count}")
         print(f"Results written to {out_file}")
@@ -214,6 +223,7 @@ if __name__ == "__main__":
     db = Database(SQLITE_DB)
     # Some functions to work around passing arguments to Fire.
     # TODO: Do this the right way, because this is so ugly/embarrassing.
+
     def cdb():
         reconciler.create_db(db)
 

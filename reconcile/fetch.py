@@ -1,9 +1,9 @@
 import datetime
 import gzip
-import inspect
 import os
 import shutil
 import sys
+from inspect import cleandoc
 
 import requests
 
@@ -67,7 +67,7 @@ def get_ia_dump_urls(
     # day of the previous month, then set the day to the first again. Use this
     # date to build a new URL, and append it to the list. Call again and
     # decrement {count}
-    if initial == False:
+    if initial is False:
         prior_month = dt - datetime.timedelta(days=1)
         prior_month = prior_month.replace(day=1)
         prior_month_parsed = prior_month.strftime("%Y%m%d")
@@ -87,9 +87,11 @@ def get_ia_dump_urls(
 
 def get_and_extract_data(show_prompt: bool = True) -> None:
     """
-    Download the latest OL editions dump from: https://openlibrary.org/data/ol_dump_editions_latest.txt.gz
-    the latest (ideally) [date]_physical_direct.tsv, from
-    https://archive.org/download/ia-abc-historical-data/ which has the ia_od <-> ia_ol_id mapping.
+    Download the latest OL editions dump from
+    https://openlibrary.org/data/ol_dump_editions_latest.txt.gz and the latest
+    (ideally) [date]_physical_direct.tsv, from
+    https://archive.org/download/ia-abc-historical-data/ which has the
+    ia_od <-> ia_ol_id mapping.
 
     After download, extract if necessary and delete unextracted files.
     """
@@ -106,7 +108,7 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
     response = ""
     if show_prompt:
         response = input(
-            inspect.cleandoc(
+            cleandoc(
                 f"""This is a convenience function to download the necessary files into
             {cwd + '/files/'}. As of August this takes about 38GB. If you wish to
             store the files elsewhere, see README.rst for information on manually
@@ -121,7 +123,10 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
 
         if response not in ["y", "yes"]:
             print(
-                "See README.rst for directions to manually download the files and specify the paths."
+                cleandoc(
+                    """See README.md for directions to manually download the files and
+                specify the paths."""
+                )
             )
             sys.exit(0)
 

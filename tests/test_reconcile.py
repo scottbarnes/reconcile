@@ -44,7 +44,8 @@ def test_get_an_ia_db_item(setup_db: Database):
     """
     db = setup_db
     db.execute(
-        "SELECT ia_id, ia_ol_edition_id FROM reconcile WHERE ia_ol_edition_id = 'OL1426680M'"
+        """SELECT ia_id, ia_ol_edition_id FROM reconcile WHERE ia_ol_edition_id =
+        'OL1426680M'"""
     )
     assert db.fetchall() == [("goldenass0000apul_k5d0", "OL1426680M")]
 
@@ -76,7 +77,8 @@ def test_insert_ol_data(setup_db: Database):
     db = setup_db
     reconciler.insert_ol_data_from_tsv(db, OL_EDITIONS_DUMP_PARSED)
     db.execute(
-        "SELECT ia_id, ia_ol_edition_id, ol_edition_id FROM reconcile WHERE ia_id = 'goldenass0000apul_k5d0'"
+        """SELECT ia_id, ia_ol_edition_id, ol_edition_id FROM reconcile
+        WHERE ia_id = 'goldenass0000apul_k5d0'"""
     )
     assert db.fetchall() == [("goldenass0000apul_k5d0", "OL1426680M", "OL1426680M")]
 
@@ -89,10 +91,10 @@ def test_query_ol_id_differences(setup_db, test_insert_ol_data):
     db = setup_db
     reconciler.query_ol_id_differences(db, REPORT_OL_IA_BACKLINKS)
     file = Path(REPORT_OL_IA_BACKLINKS)
-    assert file.is_file() == True
+    assert file.is_file() is True
     assert (
         file.read_text()
-        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\n"
+        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\n"  # noqa E501
     )
 
 
@@ -109,13 +111,14 @@ def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
         db, REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
     )
     file = Path(REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION)
-    assert file.is_file() == True
+    assert file.is_file() is True
     assert file.read_text() == "jewishchristiand0000boys\tOL1001295M\n"
 
+    # TODO: Remove debug info.
     # sql = "SELECT * FROM reconcile WHERE ia_ol_edition_id IS NOT ol_edition_id"
     # return self.query(sql)
     sql = "SELECT * FROM reconcile"
     result = db.query(sql)
     for row in result:
         print(row)
-    assert True == True
+    assert True is True

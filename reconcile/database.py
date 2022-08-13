@@ -1,5 +1,6 @@
 import sqlite3
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 
 class Database:
@@ -50,20 +51,24 @@ class Database:
         self.cursor.execute(sql, params or ())
         return self.fetchall()
 
-    def get_ol_ia_id_differences(self):
+    def get_ol_ia_id_differences(self) -> list[Any]:
         """
         Get inconsistent Open Library IDs (OLIDs) based on the associated Internet
         Archive OCAID, according to the OLID that Open Library itself associates
         with an OCAID, and with the OLID that Internet Archive associates with an
         ocaid.
         """
-        sql = "SELECT * FROM reconcile WHERE (ia_ol_edition_id IS NOT ol_edition_id) AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"
+        sql = """SELECT * FROM reconcile WHERE (ia_ol_edition_id IS NOT ol_edition_id)
+            AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"""
         return self.query(sql)
 
-    def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition(self):
+    def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition(
+        self,
+    ) -> list[Any]:
         """
         Get records where an Open Library edition has an OCAID but Internet
         Archive has no Open Library edition associated with that OCAID.
         """
-        sql = "SELECT ia_id, ol_edition_id FROM reconcile WHERE (ol_edition_id IS NOT NULL) AND (ia_ol_edition_id IS NULL)"
+        sql = """SELECT ia_id, ol_edition_id FROM reconcile WHERE (ol_edition_id IS NOT
+            NULL) AND (ia_ol_edition_id IS NULL)"""
         return self.query(sql)
