@@ -57,5 +57,13 @@ class Database:
         with an OCAID, and with the OLID that Internet Archive associates with an
         ocaid.
         """
-        sql = "SELECT * FROM reconcile WHERE ia_ol_edition_id is not ol_edition_id"
+        sql = "SELECT * FROM reconcile WHERE (ia_ol_edition_id IS NOT ol_edition_id) AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"
+        return self.query(sql)
+
+    def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition(self):
+        """
+        Get records where an Open Library edition has an OCAID but Internet
+        Archive has no Open Library edition associated with that OCAID.
+        """
+        sql = "SELECT ia_id, ol_edition_id FROM reconcile WHERE (ol_edition_id IS NOT NULL) AND (ia_ol_edition_id IS NULL)"
         return self.query(sql)

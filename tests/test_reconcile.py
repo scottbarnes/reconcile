@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,10 @@ SQLITE_DB = ":memory:"
 IA_PHYSICAL_DIRECT_DUMP = "./tests/seed_ia_physical_direct.tsv"
 OL_EDITIONS_DUMP = "./tests/seed_ol_dump_editions.txt"
 OL_EDITIONS_DUMP_PARSED = "./tests/ol_dump_editions_parsed.tsv"
+REPORT_OL_IA_BACKLINKS = "./tests/report_ol_ia_backlinks.tsv"
+REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = (
+    "./tests/report_ol_has_ocaid_ia_has_no_ol_edition.tsv"
+)
 
 reconciler = Reconciler()
 
@@ -55,12 +60,13 @@ def test_parse_ol_dump():
         reader = csv.reader(file, delimiter="\t")
         output = [row for row in reader]
 
-    assert len(output) == 7
-    assert ["OL1002158M", "organizinggenius0000benn"] in output
-    assert ["OL10000149M"] not in output
+        assert len(output) == 9
+        assert ["OL1002158M", "OL1883432W", "organizinggenius0000benn"] in output
+        assert ["OL10000149M"] not in output
 
 
 # @pytest.mark.usefixtures("setup_db")
+@pytest.fixture
 def test_insert_ol_data(setup_db: Database):
     """
     Insert Open Library data into the database on the basis of the Internet
@@ -75,4 +81,41 @@ def test_insert_ol_data(setup_db: Database):
     assert db.fetchall() == [("goldenass0000apul_k5d0", "OL1426680M", "OL1426680M")]
 
 
-# def test_query_ol_id_differences():
+def test_query_ol_id_differences(setup_db, test_insert_ol_data):
+    """
+    Verify that broken backlinks from an Open Library edition to an Internet
+    Archive record and back are properly detected.
+    """
+    db = setup_db
+    reconciler.query_ol_id_differences(db, REPORT_OL_IA_BACKLINKS)
+    file = Path(REPORT_OL_IA_BACKLINKS)
+    assert file.is_file() == True
+    assert (
+        file.read_text()
+        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\n"
+    )
+
+
+def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
+    setup_db, test_insert_ol_data
+):
+    """
+    Verify that records where an Open Library edition has an Internet
+    Archive OCAID but for that Internet Archive record there is no Open
+    Library edition.
+    """
+    db = setup_db
+    reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
+        db, REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
+    )
+    file = Path(REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION)
+    assert file.is_file() == True
+    assert file.read_text() == "jewishchristiand0000boys\tOL1001295M\n"
+
+    # sql = "SELECT * FROM reconcile WHERE ia_ol_edition_id IS NOT ol_edition_id"
+    # return self.query(sql)
+    sql = "SELECT * FROM reconcile"
+    result = db.query(sql)
+    for row in result:
+        print(row)
+    assert True == True
