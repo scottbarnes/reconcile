@@ -4,7 +4,7 @@ import sqlite3
 import sys
 from collections.abc import Iterator
 from inspect import cleandoc
-from typing import Union
+from typing import Any, Union
 
 import fire
 import orjson
@@ -37,6 +37,10 @@ REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = os.environ.get(
     "REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION",
     f"{files_dir}/report_ol_has_ocaid_ia_has_no_ol_edition.tsv",
 )
+REPORT_EDITIONS_WITH_MULTIPLE_WORKS = os.environ.get(
+    "REPORT_EDITIONS_WITH_MULTIPLE_WORKS",
+    f"{files_dir}/report_edition_with_multiple_works.tsv",
+)
 
 # Custom type
 IA_JSON = dict[str, Union[str, list[str], list[dict[str, str]], dict[str, str]]]
@@ -46,14 +50,9 @@ class Reconciler:
     """Class object for working witht the various IA <-> OL data
     reconciliation functions."""
 
-    # def get_db(self, file: str) -> Tuple[sqlite3.Connection, sqlite3.Cursor]:
-    #     """Get a connection and cursor for our little database."""
-    #     connection = sqlite3.connect(file)
-    #     return (connection, connection.cursor())
-
-    def create_db(
+    def create_ia_table(
         self, db: Database, ia_dump: str = IA_PHYSICAL_DIRECT_DUMP
-    ) -> None:  # , db_name: str = SQLITE_DB):
+    ) -> None:
         """
         Populate the DB with IA data from the [date]_inlibrary_direct.tsv
         dump, available https://archive.org/download/ia-abc-historical-data.
@@ -65,14 +64,14 @@ class Reconciler:
         # to the function, and handle opening/commiting/closing outside the
         # function.
 
-        # Create the reconcile table.
+        # Create the ia table.
         try:
             db.execute(
-                "CREATE TABLE reconcile (ia_id TEXT, ia_ol_edition_id TEXT, \
-                           ia_ol_work_id TEXT, ol_edition_id TEXT, ol_aid TEXT)"
+                "CREATE TABLE ia (ia_id TEXT, ia_ol_edition_id TEXT, \
+                ia_ol_work_id TEXT, ol_edition_id TEXT, ol_aid TEXT)"
             )
             # Indexing ia_id massively speeds up adding OL records.
-            db.execute("CREATE INDEX idx ON reconcile(ia_id)")
+            db.execute("CREATE INDEX ia_idx ON ia(ia_id)")
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
             sys.exit(1)
@@ -92,13 +91,61 @@ class Reconciler:
                 # TODO: Is there any point to setting values to Null rather
                 # than None in the DB?
                 db.execute(
-                    "INSERT INTO reconcile VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO ia VALUES (?, ?, ?, ?, ?)",
                     (
                         nuller(ia_id),
                         nuller(ia_ol_edition_id),
                         nuller(ia_ol_work_id),
                         None,
                         None,
+                    ),
+                )
+        db.commit()
+
+    def create_ol_table(
+        self, db: Database, ia_dump: str = OL_EDITIONS_DUMP_PARSED
+    ) -> None:
+        """
+        Create Open Library table and populate it.
+        """
+        # Create the OL table.
+        try:
+            db.execute(
+                "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
+                ol_ocaid TEXT, has_multiple_works INTEGER)"
+            )
+            # Indexing massively increases performance. TODO: Index other keys?
+            db.execute("CREATE INDEX ol_idx ON ol(ol_edition_id)")
+        except sqlite3.OperationalError as err:
+            print(f"SQLite error: {err}")
+            sys.exit(1)
+
+        # Populate the DB with IA physical direct dump data.
+        with open(ia_dump, newline="") as file:
+            reader = csv.reader(file, delimiter="\t")
+            for row in reader:
+                # TODO: Is this 'better' than try/except?
+                if len(row) < 4:
+                    continue
+
+                # Get the IDs, though some are empty strings.
+                # Format: id<tab>ia_id<tab>ia_ol_edition<tab>ia_ol_work
+                ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works = (
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                )
+
+                # TODO: Is there any point to setting values to Null rather
+                # than None in the DB?
+                db.execute(
+                    "INSERT INTO ol VALUES (?, ?, ?, ?)",
+                    (
+                        nuller(ol_edition_id),
+                        nuller(ol_work_id),
+                        nuller(ol_ocaid),
+                        int(has_multiple_works),
                     ),
                 )
         db.commit()
@@ -110,7 +157,7 @@ class Reconciler:
         Parse an Open Library editions dump from
         https://openlibrary.org/developers/dumps and write the output to a .tsv in
         the format:
-        ol_id\tocaid
+        ol_edition_id\tol_work_id\tol_ocaid\thas_multiple_works
         """
         # Fix for: _csv.Error: field larger than field limit (131072)
         csv.field_size_limit(sys.maxsize)
@@ -126,23 +173,23 @@ class Reconciler:
                 # Skip if no JSON.
                 if len(row) < 5:
                     continue
-                # Parse the json to get what we need.
-                d = orjson.loads(row[4])
-                ol_edition_id = d.get("key").split("/")[-1]
-                ol_work_id = []
+                # Parse the JSON to get what we need.
+                d: dict[str, Any] = orjson.loads(row[4])
+                ol_edition_id: str | None = d.get("key")
+                if ol_edition_id:
+                    ol_edition_id = ol_edition_id.split("/")[-1]
+
+                ol_ocaid: str | None = d.get("ocaid")
+
+                ol_work_id: list[str] = []
+                has_multiple_works: int = 0
                 if result := d.get("works"):
                     ol_work_id = result[0].get("key").split("/")[-1]
+                    has_multiple_works = int(len(result) > 1)  # No boolean in SQLite
 
-                # TODO: When reading this an edition with multiple works note True in a
-                # new DB key has_multiple_works or something. Everything else would be
-                # False or NULL. Then query could read True ones.
-                ol_ocaid = d.get("ocaid")
-                # if d.get("works") and len(d.get("works")) > 1:
-                #     print(f"{ol_edition_id} has mork than one work")
-                #     has_multiple_works.append(ol_edition_id)
-
-                if ol_edition_id and ol_ocaid:
-                    writer.writerow([ol_edition_id, ol_work_id, ol_ocaid])
+                writer.writerow(
+                    [ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works]
+                )
 
     def insert_ol_data_from_tsv(
         self, db: Database, parsed_ol_data: str = OL_EDITIONS_DUMP_PARSED
@@ -166,9 +213,7 @@ class Reconciler:
                     if ol_id and ol_ocaid:
                         yield (ol_id, ol_ocaid)
 
-        db.executemany(
-            "UPDATE reconcile SET ol_edition_id = ? WHERE ia_id = ?", collection()
-        )
+        db.executemany("UPDATE ia SET ol_edition_id = ? WHERE ia_id = ?", collection())
         db.commit()
 
     def query_ol_id_differences(
@@ -217,6 +262,23 @@ class Reconciler:
         print(f"De-duplicated count: {dedupe_count}")
         print(f"Results written to {out_file}")
 
+    def get_editions_with_multiple_works(
+        self, db: Database, out_file: str = REPORT_EDITIONS_WITH_MULTIPLE_WORKS
+    ) -> None:
+        result = db.get_editions_with_multiple_works()
+        count = len(result)
+        dedupe_count = len(set(result))
+        query_output_writer(result, out_file)
+
+        print(
+            cleandoc(
+                f"""Total Open Library Editions with more than on associated work:
+                {count}"""
+            )
+        )
+        print(f"De-duplicated count: {dedupe_count}")
+        print(f"Results written to {out_file}")
+
 
 if __name__ == "__main__":
     reconciler = Reconciler()
@@ -224,36 +286,45 @@ if __name__ == "__main__":
     # Some functions to work around passing arguments to Fire.
     # TODO: Do this the right way, because this is so ugly/embarrassing.
 
-    def cdb():
-        reconciler.create_db(db)
-
-    def iodft():
+    def create_db():
+        """
+        Create the tables and insert the data. NOTE: You must parse the data first.
+        """
+        print("Creating (and inserting) the Internet Archive table")
+        reconciler.create_ia_table(db)
+        print("Creating (and inserting) the Open Library table")
+        reconciler.create_ol_table(db)
+        print("Updating the Internet Archive table with Open Library data")
         reconciler.insert_ol_data_from_tsv(db)
 
-    def qod():
-        reconciler.query_ol_id_differences(db)
+    # def iodft():
+    #     reconciler.insert_ol_data_from_tsv(db)
 
-    def grwohobihnoe():
-        reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+    # def qod():
+    #     reconciler.query_ol_id_differences(db)
+
+    # def grwohobihnoe():
+    #     reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(db)
 
     def all_reports():
         """
-        Just run all the reports because these commands are way too long to
-        type.
+        Just run all the reports because these commands are way too long to type.
         """
         reconciler.query_ol_id_differences(db)
         print("\n")
         reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+        print("\n")
+        reconciler.get_editions_with_multiple_works(db)
 
     fire.Fire(
         {
-            "create-db": cdb,
-            "parse-ol-data": reconciler.parse_ol_dump_and_write_ids,
-            # "insert-ol-data-json": reconciler.insert_ol_data_from_json,
-            "insert-ol-data": iodft,
-            "all-reports": all_reports,
-            "query-ol-diff": qod,
-            "query-ia-diff": grwohobihnoe,
             "fetch-data": get_and_extract_data,
+            "parse-data": reconciler.parse_ol_dump_and_write_ids,
+            "create-db": create_db,
+            # "insert-ol-data-json": reconciler.insert_ol_data_from_json,
+            # "insert-ol-data": iodft,
+            "all-reports": all_reports,
+            # "query-ol-diff": qod,
+            # "query-ia-diff": grwohobihnoe,
         }
     )

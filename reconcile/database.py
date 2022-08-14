@@ -58,7 +58,7 @@ class Database:
         with an OCAID, and with the OLID that Internet Archive associates with an
         ocaid.
         """
-        sql = """SELECT * FROM reconcile WHERE (ia_ol_edition_id IS NOT ol_edition_id)
+        sql = """SELECT * FROM ia WHERE (ia_ol_edition_id IS NOT ol_edition_id)
             AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"""
         return self.query(sql)
 
@@ -69,6 +69,13 @@ class Database:
         Get records where an Open Library edition has an OCAID but Internet
         Archive has no Open Library edition associated with that OCAID.
         """
-        sql = """SELECT ia_id, ol_edition_id FROM reconcile WHERE (ol_edition_id IS NOT
+        sql = """SELECT ia_id, ol_edition_id FROM ia WHERE (ol_edition_id IS NOT
             NULL) AND (ia_ol_edition_id IS NULL)"""
+        return self.query(sql)
+
+    def get_editions_with_multiple_works(self) -> list[Any]:
+        """
+        Get records where an Open Library Edition has more than one associated Work.
+        """
+        sql = """SELECT ol_edition_id FROM ol WHERE has_multiple_works IS 1"""
         return self.query(sql)
