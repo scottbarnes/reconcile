@@ -62,6 +62,13 @@ class Database:
             AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"""
         return self.query(sql)
 
+    def get_editions_with_multiple_works(self) -> list[Any]:
+        """
+        Get records where an Open Library Edition has more than one associated Work.
+        """
+        sql = """SELECT ol_edition_id FROM ol WHERE has_multiple_works IS 1"""
+        return self.query(sql)
+
     def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition(
         self,
     ) -> list[Any]:
@@ -73,9 +80,38 @@ class Database:
             NULL) AND (ia_ol_edition_id IS NULL)"""
         return self.query(sql)
 
-    def get_editions_with_multiple_works(self) -> list[Any]:
+    def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition_join(
+        self,
+    ) -> list[Any]:
         """
-        Get records where an Open Library Edition has more than one associated Work.
+        Same as get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition, but this time
+        using a database inner join.
         """
-        sql = """SELECT ol_edition_id FROM ol WHERE has_multiple_works IS 1"""
+        sql = """
+        SELECT
+            ia.ia_id,
+            ol.ol_edition_id
+        FROM
+            ia INNER JOIN ol
+            ON ia.ia_id = ol.ol_ocaid
+        WHERE
+            ia.ia_ol_edition_id IS NULL
+        """
+        return self.query(sql)
+
+    def get_ia_links_to_ol_but_ol_edition_has_no_ocaid(self) -> list[Any]:
+        """
+        Get records where Internet Archive links to an Open Library Edition, but that
+        Open Library Edition has no OCAID.
+        """
+        sql = """
+        SELECT
+            ia.ia_id,
+            ia.ia_ol_edition_id
+        FROM
+            ia inner join ol
+            ON ia.ia_ol_edition_id = ol.ol_edition_id
+        WHERE
+            ol.ol_ocaid IS NULL
+        """
         return self.query(sql)

@@ -16,7 +16,13 @@ REPORT_OL_IA_BACKLINKS = "./tests/report_ol_ia_backlinks.tsv"
 REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = (
     "./tests/report_ol_has_ocaid_ia_has_no_ol_edition.tsv"
 )
+REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN = (
+    "./tests/report_ol_has_ocaid_ia_has_no_ol_edition_join.tsv"
+)
 REPORT_EDITIONS_WITH_MULTIPLE_WORKS = "./tests/report_editions_with_multiple_works.tsv"
+REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = (
+    "./tests/report_ia_links_to_ol_but_ol_edition_has_no_ocaid.tsv"
+)
 
 reconciler = Reconciler()
 
@@ -75,7 +81,7 @@ def test_parse_ol_dump():
         reader = csv.reader(file, delimiter="\t")
         output = [row for row in reader]
 
-        assert len(output) == 12
+        assert len(output) == 13
         assert ["OL1002158M", "OL1883432W", "organizinggenius0000benn", "1"] in output
         assert ["OL10000149M"] not in output
 
@@ -121,7 +127,7 @@ def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
     Library edition.
     """
     db = setup_db
-    reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
+    reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition(
         db, REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
     )
     file = Path(REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION)
@@ -140,6 +146,39 @@ def test_get_editions_with_multiple_works(
     file = Path(REPORT_EDITIONS_WITH_MULTIPLE_WORKS)
     assert file.is_file() is True
     assert file.read_text() == "OL1002158M\n"
+
+
+def test_get_ol_has_ocaid_but_ia_has_no_ol_edition_union(setup_db) -> None:
+    """
+    Same as the other ol -> ocaid -> missing link query, but with a union.
+    """
+    db = setup_db
+    reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(
+        db, REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN
+    )
+    file = Path(REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN)
+    assert file.is_file() is True
+    assert file.read_text() == "jewishchristiand0000boys\tOL1001295M\n"
+
+
+def test_get_ia_links_to_ol_but_ol_edition_has_no_ocaid(setup_db: Database) -> None:
+    """
+    Verify records where Internet Archive links to an Open Library Edition, but Open
+    Library doesn't link back from that Edition, are written to a file.
+    """
+    # TODO: Is there any way to do this where this can catch one way links on either
+    # side? E.g. IA links to an OL Edition of a work, and that specific Edition doesn't
+    # link back, but another Edition of the Work links back to a *different* OCAID, and
+    # yet IA doesn't link back from that other OCAID.
+    # Maybe some way to check: if an IA OCID links to an OL Edition, then for all
+    # Editions of the Work, does any edition link to an OCAID?
+    db = setup_db
+    reconciler.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(
+        db, REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID
+    )
+    file = Path(REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID)
+    assert file.is_file() is True
+    assert file.read_text() == "climbersguidetot00rope\tOL5214872M\n"
 
     # TODO: Remove debug info.
     # sql = "SELECT * FROM ia WHERE ia_ol_edition_id IS NOT ol_edition_id"

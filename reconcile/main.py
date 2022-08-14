@@ -3,7 +3,6 @@ import os
 import sqlite3
 import sys
 from collections.abc import Iterator
-from inspect import cleandoc
 from typing import Any, Union
 
 import fire
@@ -37,9 +36,17 @@ REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = os.environ.get(
     "REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION",
     f"{files_dir}/report_ol_has_ocaid_ia_has_no_ol_edition.tsv",
 )
+REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN = os.environ.get(
+    "REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN",
+    f"{files_dir}/report_ol_has_ocaid_ia_has_no_ol_edition_join.tsv",
+)
 REPORT_EDITIONS_WITH_MULTIPLE_WORKS = os.environ.get(
     "REPORT_EDITIONS_WITH_MULTIPLE_WORKS",
     f"{files_dir}/report_edition_with_multiple_works.tsv",
+)
+REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = os.environ.get(
+    "REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID",
+    f"{files_dir}/report_ia_links_to_ol_but_ol_edition_has_no_ocaid.tsv",
 )
 
 # Custom type
@@ -173,19 +180,23 @@ class Reconciler:
                 # Skip if no JSON.
                 if len(row) < 5:
                     continue
-                # Parse the JSON to get what we need.
-                d: dict[str, Any] = orjson.loads(row[4])
-                ol_edition_id: str | None = d.get("key")
-                if ol_edition_id:
-                    ol_edition_id = ol_edition_id.split("/")[-1]
+                # Annotate some variables to make this a bit cleaner. Maybe
+                d: dict[str, Any]
+                ol_edition_id: str
+                ol_ocaid: str
+                ol_work_id: list[dict[str, str]] = []
+                has_multiple_works: int = 0  # No boolean in SQLite
 
-                ol_ocaid: str | None = d.get("ocaid")
+                # Parse the JSON
+                d = orjson.loads(row[4])
+                # TODO: Check how these empty strings are being stored in the database
+                # (e.g. None, "", Null, or what)
+                ol_ocaid = d.get("ocaid", "")
+                ol_edition_id = d.get("key", "").split("/")[-1]
 
-                ol_work_id: list[str] = []
-                has_multiple_works: int = 0
-                if result := d.get("works"):
-                    ol_work_id = result[0].get("key").split("/")[-1]
-                    has_multiple_works = int(len(result) > 1)  # No boolean in SQLite
+                if work_id := d.get("works"):
+                    ol_work_id = work_id[0].get("key").split("/")[-1]
+                    has_multiple_works = int(len(work_id) > 1)
 
                 writer.writerow(
                     [ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works]
@@ -201,8 +212,8 @@ class Reconciler:
         database update that database row to include the ol_id as noted within
         the OL tsv that we're reading.
         """
-        # TODO: Try a IA table and an OL table and see how fast this is doing
-        # queries with an inner join.
+        # TODO: Try an IA table and an OL table and see how fast this is doing
+        # queries with an inner join. Answer: the queries are slower with the join.
 
         def collection() -> Iterator[tuple[str, str]]:
             with open(parsed_ol_data) as file:
@@ -235,11 +246,11 @@ class Reconciler:
         dedupe_count = len(set(result))
         query_output_writer(result, out_file)
 
-        print(f"Total (ostensibly) broken back-links: {count}")
-        print(f"De-duplicated count: {dedupe_count}")
+        print(f"Total (ostensibly) broken back-links: {count:,}")
+        print(f"De-duplicated count: {dedupe_count:,}")
         print(f"Results written to {out_file}")
 
-    def get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(
+    def get_ol_has_ocaid_but_ia_has_no_ol_edition(
         self, db: Database, out_file: str = REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
     ) -> None:
         """
@@ -253,13 +264,32 @@ class Reconciler:
         query_output_writer(result, out_file)
 
         print(
-            cleandoc(
-                f"""Total Internet Archive records where an Open Library Edition
-                     has an OCAID but Internet Archive has no Open Library Edition:
-                     {count}"""
-            )
+            f"Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition: {count:,}"  # noqa E501
         )
-        print(f"De-duplicated count: {dedupe_count}")
+        print(f"De-duplicated count: {dedupe_count:,}")
+        print(f"Results written to {out_file}")
+
+    def get_ol_has_ocaid_but_ia_has_no_ol_edition_join(
+        self,
+        db: Database,
+        out_file: str = REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN,
+    ) -> None:
+        """
+        Get rows where Open Library has an Internet Archive OCAID, but for that
+        Internet Archive record there is no Open Library edition, except this time using
+        a database join rather than the Open Library values inserted into the Internet
+        Archive table.
+        """
+        # Get the results, count them, and write the results to a TSV.
+        result = db.get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition_join()
+        count = len(result)
+        dedupe_count = len(set(result))
+        query_output_writer(result, out_file)
+
+        print(
+            f"Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition (JOINS): {count:,}"  # noqa E501
+        )
+        print(f"De-duplicated count (JOINS): {dedupe_count:,}")
         print(f"Results written to {out_file}")
 
     def get_editions_with_multiple_works(
@@ -271,12 +301,25 @@ class Reconciler:
         query_output_writer(result, out_file)
 
         print(
-            cleandoc(
-                f"""Total Open Library Editions with more than on associated work:
-                {count}"""
-            )
+            f"Total Open Library Editions with more than on associated work: {count:,}"  # noqa E501
         )
-        print(f"De-duplicated count: {dedupe_count}")
+        print(f"De-duplicated count: {dedupe_count:,}")
+        print(f"Results written to {out_file}")
+
+    def get_ia_links_to_ol_but_ol_edition_has_no_ocaid(
+        self,
+        db: Database,
+        out_file: str = REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID,
+    ) -> None:
+        result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid()
+        count = len(result)
+        dedupe_count = len(set(result))
+        query_output_writer(result, out_file)
+
+        print(
+            f"Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID: {count:,}"  # noqa E501
+        )
+        print(f"De-duplicated count: {dedupe_count:,}")
         print(f"Results written to {out_file}")
 
 
@@ -312,18 +355,22 @@ if __name__ == "__main__":
         """
         reconciler.query_ol_id_differences(db)
         print("\n")
-        reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(db)
-        print("\n")
         reconciler.get_editions_with_multiple_works(db)
+        print("\n")
+        reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+        print("\nThe next queries use joins and are slower.\n")
+        reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
+        print("\n")
+        reconciler.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
 
     fire.Fire(
         {
             "fetch-data": get_and_extract_data,
             "parse-data": reconciler.parse_ol_dump_and_write_ids,
             "create-db": create_db,
+            "all-reports": all_reports,
             # "insert-ol-data-json": reconciler.insert_ol_data_from_json,
             # "insert-ol-data": iodft,
-            "all-reports": all_reports,
             # "query-ol-diff": qod,
             # "query-ia-diff": grwohobihnoe,
         }
