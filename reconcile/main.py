@@ -398,12 +398,16 @@ if __name__ == "__main__":
     # Some functions to work around passing arguments to Fire.
     # TODO: Do this the right way, because this is so ugly/embarrassing.
 
-    # Create the database tables and import the data
     def create_db():
+        """
+        Create the tables and insert the data. NOTE: You must parse the data first.
+        """
         reconciler.create_db(db)
 
-    # Run all the reports.
     def all_reports():
+        """
+        Just run all the reports because these commands are way too long to type.
+        """
         reconciler.all_reports(db)
 
     fire.Fire(
