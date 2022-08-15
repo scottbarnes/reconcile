@@ -44,7 +44,7 @@ def extract_gzip(file: str) -> str:
 
 
 def get_ia_dump_urls(
-    dt: datetime.date, count: int, initial: bool = True, urls: list[str] = []
+    dt: datetime.date, count: int, initial: bool = True, urls: list[str] = None
 ) -> list[str]:
     """
     There doesn't seem to be a 'latest' file for the IA
@@ -56,6 +56,7 @@ def get_ia_dump_urls(
     This is a recursive function that returns itself, decrements the count, and
     eventually returns a list of the download URLs based on the current month.
     """
+    urls = urls or []
     URL_PREFIX = "https://archive.org/download/ia-abc-historical-data/"
     URL_SUFFIX = "_physical_direct.tsv"
 
