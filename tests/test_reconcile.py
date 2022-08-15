@@ -83,7 +83,7 @@ def test_parse_ol_dump():
     output = []
     with open(OL_EDITIONS_DUMP_PARSED) as file:
         reader = csv.reader(file, delimiter="\t")
-        output = [row for row in reader]
+        output = list(reader)
 
         assert len(output) == 14
         assert [
