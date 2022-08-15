@@ -59,7 +59,7 @@ REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = os.environ.get(
 
 
 class Reconciler:
-    """Class object for working witht the various IA <-> OL data
+    """Class object for working with the various IA <-> OL data
     reconciliation functions."""
 
     def create_ia_table(
@@ -76,7 +76,7 @@ class Reconciler:
         """
         # TODO: Find out if it's usual to open and close the session from
         # within a function such as this, or to pass the session as an argument
-        # to the function, and handle opening/commiting/closing outside the
+        # to the function, and handle opening/committing/closing outside the
         # function.
 
         # Create the ia table.
