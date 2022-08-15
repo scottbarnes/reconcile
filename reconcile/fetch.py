@@ -110,8 +110,8 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
         response = input(
             cleandoc(
                 f"""This is a convenience function to download the necessary files into
-            {cwd + '/files/'}. As of August this takes about 38GB. If you wish to
-            store the files elsewhere, see README.rst for information on manually
+            {cwd + '/files/'}. As of August 2022 this takes about 40GB. If you wish to
+            store the files elsewhere, see README.md for information on manually
             fetching the files.
 
             (Specify --show_prompt=False to suppress this message.)

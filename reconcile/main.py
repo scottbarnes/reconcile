@@ -240,6 +240,17 @@ class Reconciler:
                     ]
                 )
 
+    def create_db(self, db: Database) -> None:
+        """
+        Create the tables and insert the data. NOTE: You must parse the data first.
+        """
+        print("Creating (and inserting) the Internet Archive table")
+        self.create_ia_table(db)
+        print("Creating (and inserting) the Open Library table")
+        self.create_ol_table(db)
+        print("Updating the Internet Archive table with Open Library data")
+        self.insert_ol_data_from_tsv(db)
+
     def insert_ol_data_from_tsv(
         self, db: Database, parsed_ol_data: str = OL_EDITIONS_DUMP_PARSED
     ) -> None:
@@ -265,6 +276,21 @@ class Reconciler:
         db.executemany("UPDATE ia SET ol_edition_id = ? WHERE ia_id = ?", collection())
         db.commit()
 
+    def process_result(self, result: list[Any], out_file: str, message: str) -> None:
+        """
+        Template to reduce repetition in processing the query results.
+
+        :param list result: self.query output
+        :param str out_file: filename into which to write the query output
+        :param str message: description of the query result
+        """
+        count = len(result)
+        dedupe_count = len(set(result))
+        query_output_writer(result, out_file)
+        print(f"{message}: {count:,}")
+        print(f"De-duplicated count: {dedupe_count:,}")
+        print(f"Results written to {out_file}")
+
     def query_ol_id_differences(
         self, db: Database, out_file: str = REPORT_OL_IA_BACKLINKS
     ) -> None:
@@ -279,14 +305,9 @@ class Reconciler:
         # filter these results out from the others?
 
         # Get the results, count them, and write the results to a TSV.
+        message = "Total (ostensibly) broken back-links to Open Library"
         result = db.get_ol_ia_id_differences()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
-
-        print(f"Total (ostensibly) broken back-links: {count:,}")
-        print(f"De-duplicated count: {dedupe_count:,}")
-        print(f"Results written to {out_file}")
+        self.process_result(result, out_file, message)
 
     def get_ol_has_ocaid_but_ia_has_no_ol_edition(
         self, db: Database, out_file: str = REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
@@ -296,16 +317,9 @@ class Reconciler:
         Internet Archive record there is no Open Library edition.
         """
         # Get the results, count them, and write the results to a TSV.
+        message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition"  # noqa E501
         result = db.get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
-
-        print(
-            f"Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition: {count:,}"  # noqa E501
-        )
-        print(f"De-duplicated count: {dedupe_count:,}")
-        print(f"Results written to {out_file}")
+        self.process_result(result, out_file, message)
 
     def get_ol_has_ocaid_but_ia_has_no_ol_edition_join(
         self,
@@ -319,16 +333,9 @@ class Reconciler:
         Archive table.
         """
         # Get the results, count them, and write the results to a TSV.
+        message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition (JOINS)"  # noqa E501
         result = db.get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition_join()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
-
-        print(
-            f"Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition (JOINS): {count:,}"  # noqa E501
-        )
-        print(f"De-duplicated count (JOINS): {dedupe_count:,}")
-        print(f"Results written to {out_file}")
+        self.process_result(result, out_file, message)
 
     def get_editions_with_multiple_works(
         self, db: Database, out_file: str = REPORT_EDITIONS_WITH_MULTIPLE_WORKS
@@ -336,16 +343,11 @@ class Reconciler:
         """
         Get rows where on Open Library Edition contains multiple Works.
         """
-        result = db.get_editions_with_multiple_works()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
-
-        print(
-            f"Total Open Library Editions with more than on associated work: {count:,}"  # noqa E501
+        message = (
+            "Total Open Library Editions with more than on associated work"  # noqa E501
         )
-        print(f"De-duplicated count: {dedupe_count:,}")
-        print(f"Results written to {out_file}")
+        result = db.get_editions_with_multiple_works()
+        self.process_result(result, out_file, message)
 
     def get_ia_links_to_ol_but_ol_edition_has_no_ocaid(
         self,
@@ -356,16 +358,9 @@ class Reconciler:
         Get Internet Archive OCAIDs and corresponding Open Library Edition IDs where
         Internet Archive links to an Open Library Edition, but the Edition has no OCAID.
         """
+        message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID"  # noqa E501
         result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
-
-        print(
-            f"Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID: {count:,}"  # noqa E501
-        )
-        print(f"De-duplicated count: {dedupe_count:,}")
-        print(f"Results written to {out_file}")
+        self.process_result(result, out_file, message)
 
     def get_ol_edition_has_ocaid_but_no_ia_source_record(
         self,
@@ -376,45 +371,11 @@ class Reconciler:
         Get Open Library Editions where the row has on OCAID but no 'ia:<ocaid>' value
         within
         """
+        message = "Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records"  # noqa E501
         result = db.get_ol_edition_has_ocaid_but_no_ia_source_record()
-        count = len(result)
-        dedupe_count = len(set(result))
-        query_output_writer(result, out_file)
+        self.process_result(result, out_file, message)
 
-        print(
-            f"Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records {count:,}"  # noqa E501
-        )
-        print(f"De-duplicated count: {dedupe_count:,}")
-        print(f"Results written to {out_file}")
-
-
-if __name__ == "__main__":
-    reconciler = Reconciler()
-    db = Database(SQLITE_DB)
-    # Some functions to work around passing arguments to Fire.
-    # TODO: Do this the right way, because this is so ugly/embarrassing.
-
-    def create_db():
-        """
-        Create the tables and insert the data. NOTE: You must parse the data first.
-        """
-        print("Creating (and inserting) the Internet Archive table")
-        reconciler.create_ia_table(db)
-        print("Creating (and inserting) the Open Library table")
-        reconciler.create_ol_table(db)
-        print("Updating the Internet Archive table with Open Library data")
-        reconciler.insert_ol_data_from_tsv(db)
-
-    # def iodft():
-    #     reconciler.insert_ol_data_from_tsv(db)
-
-    # def qod():
-    #     reconciler.query_ol_id_differences(db)
-
-    # def grwohobihnoe():
-    #     reconciler.get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(db)
-
-    def all_reports():
+    def all_reports(self, db: Database) -> None:
         """
         Just run all the reports because these commands are way too long to type.
         """
@@ -430,15 +391,26 @@ if __name__ == "__main__":
         print("\n")
         reconciler.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
 
+
+if __name__ == "__main__":
+    reconciler = Reconciler()
+    db = Database(SQLITE_DB)
+    # Some functions to work around passing arguments to Fire.
+    # TODO: Do this the right way, because this is so ugly/embarrassing.
+
+    # Create the database tables and import the data
+    def create_db():
+        reconciler.create_db(db)
+
+    # Run all the reports.
+    def all_reports():
+        reconciler.all_reports(db)
+
     fire.Fire(
         {
             "fetch-data": get_and_extract_data,
             "parse-data": reconciler.parse_ol_dump_and_write_ids,
             "create-db": create_db,
             "all-reports": all_reports,
-            # "insert-ol-data-json": reconciler.insert_ol_data_from_json,
-            # "insert-ol-data": iodft,
-            # "query-ol-diff": qod,
-            # "query-ia-diff": grwohobihnoe,
         }
     )

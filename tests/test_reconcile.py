@@ -35,7 +35,7 @@ def test_version():
 
 
 @pytest.fixture()
-def setup_db():
+def setup_db(test_parse_ol_dump):
     """
     Setup the database table, populate Internet Archive data, and yield a
     Database instance to use.
@@ -73,6 +73,7 @@ def test_get_an_ol_db_item(setup_db: Database):
     ]
 
 
+@pytest.fixture()
 def test_parse_ol_dump():
     """
     Parse the Open Library editions dump insert an item, and get an item to

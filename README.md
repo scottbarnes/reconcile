@@ -53,7 +53,7 @@ Run the commands in order, top to bottom, to:
 ```
 poetry run python reconcile/main.py fetch-data
 ```
-Fetch the exported database data (this takes a bit).
+Fetch the exported database data. This takes me about 8 minutes.
 Note: This is a convenience function. The data can be manually into /you/path/to/reconcile/files
 - Open Library Editions dump: https://openlibrary.org/data/ol_dump_editions_latest.txt.gz
 - The newest Internet Archive physical_direct.tsv: https://archive.org/download/ia-abc-historical-data/ (it's near the bottom)
@@ -61,8 +61,8 @@ Note: This is a convenience function. The data can be manually into /you/path/to
 ```
 poetry run reconcile/main.py parse-data
 ```
-Parse the data so it's readable more quickly by reconcile. This takes about 10 minutes
-on my computer, but it only needs to be done once.
+Parse the data so it's readable more quickly by reconcile. This takes me about 10
+minutes, but it only needs to be done once.
 
 ```
 poetry run python reconcile/main.py create-db
@@ -79,4 +79,5 @@ seconds.
 
 ### Contributing
 - Run the tests manually: `poetry run pytest`
-- Using pre-commit: `poetry run pre-commit install`
+- Using pre-commit: `poetry run pre-commit install`, then just `git add`, `git commit`
+  etc. as usual.
