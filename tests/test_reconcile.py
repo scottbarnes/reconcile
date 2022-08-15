@@ -23,6 +23,9 @@ REPORT_EDITIONS_WITH_MULTIPLE_WORKS = "./tests/report_editions_with_multiple_wor
 REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = (
     "./tests/report_ia_links_to_ol_but_ol_edition_has_no_ocaid.tsv"
 )
+REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = (
+    "./tests/report_edition_has_ocaid_but_no_ia_source_record.tsv"
+)
 
 reconciler = Reconciler()
 
@@ -66,7 +69,7 @@ def test_get_an_ol_db_item(setup_db: Database):
     db = setup_db
     db.execute("""SELECT * FROM ol WHERE ol_edition_id = 'OL1002158M'""")
     assert db.fetchall() == [
-        ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1)
+        ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1, 1)
     ]
 
 
@@ -81,9 +84,15 @@ def test_parse_ol_dump():
         reader = csv.reader(file, delimiter="\t")
         output = [row for row in reader]
 
-        assert len(output) == 13
-        assert ["OL1002158M", "OL1883432W", "organizinggenius0000benn", "1"] in output
-        assert ["OL10000149M"] not in output
+        assert len(output) == 14
+        assert [
+            "OL1002158M",
+            "OL1883432W",
+            "organizinggenius0000benn",
+            "1",
+            "1",
+        ] in output
+        assert ["OL10000149M"] not in output  # Test broken b/c incomplete list.
 
 
 # @pytest.mark.usefixtures("setup_db")
@@ -179,6 +188,20 @@ def test_get_ia_links_to_ol_but_ol_edition_has_no_ocaid(setup_db: Database) -> N
     file = Path(REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID)
     assert file.is_file() is True
     assert file.read_text() == "climbersguidetot00rope\tOL5214872M\n"
+
+
+def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) -> None:
+    """
+    Verify the script finds and records Open Library Editions with an OCAID record
+    that do not have an 'ia:<ocaid>' record.
+    """
+    db = setup_db
+    reconciler.get_ol_edition_has_ocaid_but_no_ia_source_record(
+        db, REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD
+    )
+    file = Path(REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD)
+    assert file.is_file() is True
+    assert file.read_text() == "guidetojohnmuirt0000star\tOL5756837M\n"
 
     # TODO: Remove debug info.
     # sql = "SELECT * FROM ia WHERE ia_ol_edition_id IS NOT ol_edition_id"

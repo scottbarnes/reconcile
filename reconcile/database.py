@@ -115,3 +115,19 @@ class Database:
             ol.ol_ocaid IS NULL
         """
         return self.query(sql)
+
+    def get_ol_edition_has_ocaid_but_no_ia_source_record(self) -> list[Any]:
+        """
+        Get records where an Open Library Edition has an OCAID but the source_record
+        key has no 'ia:<ocaid>' value.
+        """
+        sql = """
+        SELECT
+            ol.ol_ocaid,
+            ol.ol_edition_id
+        FROM
+            ol
+        WHERE
+            (ol.ol_ocaid IS NOT NULL) AND (ol.has_ia_source_record is 0)
+        """
+        return self.query(sql)

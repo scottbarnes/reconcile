@@ -48,6 +48,10 @@ REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = os.environ.get(
     "REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID",
     f"{files_dir}/report_ia_links_to_ol_but_ol_edition_has_no_ocaid.tsv",
 )
+REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = os.environ.get(
+    "REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD",
+    f"{files_dir}/report_ol_edition_has_ocaid_but_no_source_record.tsv",
+)
 
 # Custom type
 IA_JSON = dict[str, Union[str, list[str], list[dict[str, str]], dict[str, str]]]
@@ -119,7 +123,8 @@ class Reconciler:
         try:
             db.execute(
                 "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
-                ol_ocaid TEXT, has_multiple_works INTEGER)"
+                ol_ocaid TEXT, has_multiple_works INTEGER, \
+                has_ia_source_record INTEGER)"
             )
             # Indexing massively increases performance. TODO: Index other keys?
             db.execute("CREATE INDEX ol_idx ON ol(ol_edition_id)")
@@ -137,22 +142,30 @@ class Reconciler:
 
                 # Get the IDs, though some are empty strings.
                 # Format: id<tab>ia_id<tab>ia_ol_edition<tab>ia_ol_work
-                ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works = (
+                (
+                    ol_edition_id,
+                    ol_work_id,
+                    ol_ocaid,
+                    has_multiple_works,
+                    has_ia_source_record,
+                ) = (
                     row[0],
                     row[1],
                     row[2],
                     row[3],
+                    row[4],
                 )
 
                 # TODO: Is there any point to setting values to Null rather
                 # than None in the DB?
                 db.execute(
-                    "INSERT INTO ol VALUES (?, ?, ?, ?)",
+                    "INSERT INTO ol VALUES (?, ?, ?, ?, ?)",
                     (
                         nuller(ol_edition_id),
                         nuller(ol_work_id),
                         nuller(ol_ocaid),
                         int(has_multiple_works),
+                        int(has_ia_source_record),
                     ),
                 )
         db.commit()
@@ -164,7 +177,7 @@ class Reconciler:
         Parse an Open Library editions dump from
         https://openlibrary.org/developers/dumps and write the output to a .tsv in
         the format:
-        ol_edition_id\tol_work_id\tol_ocaid\thas_multiple_works
+        ol_edition_id\tol_work_id\tol_ocaid\thas_multiple_works\thas_ia_source_record
         """
         # Fix for: _csv.Error: field larger than field limit (131072)
         csv.field_size_limit(sys.maxsize)
@@ -175,7 +188,6 @@ class Reconciler:
             writer = csv.writer(outfile, delimiter="\t")
             reader = csv.reader(infile, delimiter="\t")
 
-            # has_multiple_works = []
             for row in reader:
                 # Skip if no JSON.
                 if len(row) < 5:
@@ -186,6 +198,7 @@ class Reconciler:
                 ol_ocaid: str
                 ol_work_id: list[dict[str, str]] = []
                 has_multiple_works: int = 0  # No boolean in SQLite
+                has_ia_source_record: int = 0
 
                 # Parse the JSON
                 d = orjson.loads(row[4])
@@ -198,8 +211,29 @@ class Reconciler:
                     ol_work_id = work_id[0].get("key").split("/")[-1]
                     has_multiple_works = int(len(work_id) > 1)
 
+                if (source_records := d.get("source_records")) and isinstance(
+                    source_records, list
+                ):
+                    # Check if each record has an "ia:" in it. If any does, return True
+                    # and convert to 1 for SQLite, and 0 otherwise.
+                    has_ia_source_record = int(
+                        any(
+                            [
+                                "ia" in record
+                                for record in source_records
+                                if record is not None
+                            ]
+                        )
+                    )
+
                 writer.writerow(
-                    [ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works]
+                    [
+                        ol_edition_id,
+                        ol_work_id,
+                        ol_ocaid,
+                        has_multiple_works,
+                        has_ia_source_record,
+                    ]
                 )
 
     def insert_ol_data_from_tsv(
@@ -295,6 +329,9 @@ class Reconciler:
     def get_editions_with_multiple_works(
         self, db: Database, out_file: str = REPORT_EDITIONS_WITH_MULTIPLE_WORKS
     ) -> None:
+        """
+        Get rows where on Open Library Edition contains multiple Works.
+        """
         result = db.get_editions_with_multiple_works()
         count = len(result)
         dedupe_count = len(set(result))
@@ -311,6 +348,10 @@ class Reconciler:
         db: Database,
         out_file: str = REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID,
     ) -> None:
+        """
+        Get Internet Archive OCAIDs and corresponding Open Library Edition IDs where
+        Internet Archive links to an Open Library Edition, but the Edition has no OCAID.
+        """
         result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid()
         count = len(result)
         dedupe_count = len(set(result))
@@ -318,6 +359,26 @@ class Reconciler:
 
         print(
             f"Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID: {count:,}"  # noqa E501
+        )
+        print(f"De-duplicated count: {dedupe_count:,}")
+        print(f"Results written to {out_file}")
+
+    def get_ol_edition_has_ocaid_but_no_ia_source_record(
+        self,
+        db: Database,
+        out_file: str = REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD,
+    ) -> None:
+        """
+        Get Open Library Editions where the row has on OCAID but no 'ia:<ocaid>' value
+        within
+        """
+        result = db.get_ol_edition_has_ocaid_but_no_ia_source_record()
+        count = len(result)
+        dedupe_count = len(set(result))
+        query_output_writer(result, out_file)
+
+        print(
+            f"Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records {count:,}"  # noqa E501
         )
         print(f"De-duplicated count: {dedupe_count:,}")
         print(f"Results written to {out_file}")
@@ -358,6 +419,8 @@ if __name__ == "__main__":
         reconciler.get_editions_with_multiple_works(db)
         print("\n")
         reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+        print("\n")
+        reconciler.get_ol_edition_has_ocaid_but_no_ia_source_record(db)
         print("\nThe next queries use joins and are slower.\n")
         reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
         print("\n")
