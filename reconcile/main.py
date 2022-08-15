@@ -3,16 +3,13 @@ import os
 import sqlite3
 import sys
 from collections.abc import Iterator
-from typing import Any, Union
+from typing import Any
 
 import fire
 import orjson
 from database import Database
 from fetch import get_and_extract_data
 from utils import nuller, query_output_writer
-
-# from collections.abc import
-
 
 # Read the file paths from environment variables first, otherwise try to use the
 # filenames from the download scripts.
@@ -57,8 +54,8 @@ REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = os.environ.get(
     f"{files_dir}/report_ol_edition_has_ocaid_but_no_source_record.tsv",
 )
 
-# Custom type
-IA_JSON = dict[str, Union[str, list[str], list[dict[str, str]], dict[str, str]]]
+# Custom types
+# IA_JSON = dict[str, Union[str, list[str], list[dict[str, str]], dict[str, str]]]
 
 
 class Reconciler:
@@ -73,6 +70,9 @@ class Reconciler:
         dump, available https://archive.org/download/ia-abc-historical-data.
         This data is all entered first and therefore doesn't rely on anything
         else being in there.
+
+        :param Database db: an instance of the database.py class.
+        :param str ia_dump: path to ia_physical_direct.tsv.
         """
         # TODO: Find out if it's usual to open and close the session from
         # within a function such as this, or to pass the session as an argument
@@ -118,10 +118,13 @@ class Reconciler:
         db.commit()
 
     def create_ol_table(
-        self, db: Database, ia_dump: str = OL_EDITIONS_DUMP_PARSED
+        self, db: Database, ol_dump_parsed: str = OL_EDITIONS_DUMP_PARSED
     ) -> None:
         """
         Create Open Library table and populate it.
+
+        :param Database db: an instance of the database.py class
+        :param str ol_dump_parsed: path to the parsed Open Library Editions dump
         """
         # Create the OL table.
         try:
@@ -137,7 +140,7 @@ class Reconciler:
             sys.exit(1)
 
         # Populate the DB with IA physical direct dump data.
-        with open(ia_dump, newline="") as file:
+        with open(ol_dump_parsed, newline="") as file:
             reader = csv.reader(file, delimiter="\t")
             for row in reader:
                 # TODO: Is this 'better' than try/except?
@@ -182,6 +185,9 @@ class Reconciler:
         https://openlibrary.org/developers/dumps and write the output to a .tsv in
         the format:
         ol_edition_id\tol_work_id\tol_ocaid\thas_multiple_works\thas_ia_source_record
+
+        :param str in_file: path to the unparsed Open Library editions dump.
+        :param str out_file: path where the parsed Open Library editions dump will go.
         """
         # Fix for: _csv.Error: field larger than field limit (131072)
         csv.field_size_limit(sys.maxsize)
@@ -243,6 +249,8 @@ class Reconciler:
     def create_db(self, db: Database) -> None:
         """
         Create the tables and insert the data. NOTE: You must parse the data first.
+
+        :param Database db: an instance of the database.py class.
         """
         print("Creating (and inserting) the Internet Archive table")
         self.create_ia_table(db)
@@ -260,6 +268,9 @@ class Reconciler:
         OL .tsv, find that row's ia_id within the database, and then within the
         database update that database row to include the ol_id as noted within
         the OL tsv that we're reading.
+
+        :param Database db: an instance of the database.py class.
+        :param str parsed_ol_data: path to the parsed Open Library Editions file.
         """
         # TODO: Try an IA table and an OL table and see how fast this is doing
         # queries with an inner join. Answer: the queries are slower with the join.
@@ -297,6 +308,9 @@ class Reconciler:
         """
         Query the database to find archive.org item links to Open Library editions
         that do not themselves link back to the original archive.org item.
+
+        :param Database db: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         # TODO: There seem to be serious problems with this. Could it be
         # because some entries on both sides will have many editions, and they
@@ -315,6 +329,9 @@ class Reconciler:
         """
         Get rows where Open Library has an Internet Archive OCAID, but for that
         Internet Archive record there is no Open Library edition.
+
+        :param Database db: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         # Get the results, count them, and write the results to a TSV.
         message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition"  # noqa E501
@@ -331,6 +348,9 @@ class Reconciler:
         Internet Archive record there is no Open Library edition, except this time using
         a database join rather than the Open Library values inserted into the Internet
         Archive table.
+
+        :param Database db: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         # Get the results, count them, and write the results to a TSV.
         message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition (JOINS)"  # noqa E501
@@ -342,6 +362,9 @@ class Reconciler:
     ) -> None:
         """
         Get rows where on Open Library Edition contains multiple Works.
+
+        :param Database: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         message = (
             "Total Open Library Editions with more than on associated work"  # noqa E501
@@ -357,6 +380,9 @@ class Reconciler:
         """
         Get Internet Archive OCAIDs and corresponding Open Library Edition IDs where
         Internet Archive links to an Open Library Edition, but the Edition has no OCAID.
+
+        :param Database: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID"  # noqa E501
         result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid()
@@ -370,6 +396,9 @@ class Reconciler:
         """
         Get Open Library Editions where the row has on OCAID but no 'ia:<ocaid>' value
         within
+
+        :param Database: an instance of the database.py class.
+        :param str out_file: path to the report output.
         """
         message = "Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records"  # noqa E501
         result = db.get_ol_edition_has_ocaid_but_no_ia_source_record()
@@ -378,6 +407,8 @@ class Reconciler:
     def all_reports(self, db: Database) -> None:
         """
         Just run all the reports because these commands are way too long to type.
+
+        :param Database db: an instance of the database.py class.
         """
         reconciler.query_ol_id_differences(db)
         print("\n")

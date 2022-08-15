@@ -19,6 +19,20 @@ invoked directly:
 - `poetry shell`
 - `python reconcile/main.py`
 
+### Configuration
+There isn't much configuration, but if you want to store the files in somewhere other
+than /path/to/reconcile/files, you can export the following, hopefully relatively
+self-explanatory environment variables:
+- IA_PHYSICAL_DIRECT_DUMP
+- OL_EDITIONS_DUMP
+- OL_EDITIONS_DUMP_PARSED
+- REPORT_OL_IA_BACKLINKS
+- REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
+- REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN
+- REPORT_EDITIONS_WITH_MULTIPLE_WORKS
+- REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID
+- REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD
+
 ### Running reconcile
 Whether you `poetry run python reconcile/main.py` or run `poetry shell` and then `python reconcile/main.py`, either way, you should see something similar to:
 ```
@@ -46,7 +60,7 @@ COMMANDS
 Run the commands in order, top to bottom, to:
 - download the necessary database dumps;
 - parse them;
-- create the database; and
+- create the database and import the parsed data, and
 - run the reports.
 
 ### Step by step
@@ -76,6 +90,18 @@ poetry run python reconcile/main.py all-reports
 Run all the reports. It will print out some poorly formatted information to the screen,
 and also write the data to TSV files and print their location. This one takes maybe 30
 seconds.
+
+### The reports
+The handful of reports are:
+- Total (ostensibly) broken back-links to Open Library
+- Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition
+- Total Internet Archive records where an Open Library Edition has an OCAID but Internet
+  Archive has no Open Library Edition (this time using a database join, which gets
+  a slightly different, and more accurate, result, because of how the data for the first
+  query is collated
+- Total Open Library Editions with more than on associated work
+- Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID
+- Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records
 
 ### Contributing
 - Run the tests manually: `poetry run pytest`
