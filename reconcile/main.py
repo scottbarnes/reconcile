@@ -18,6 +18,10 @@ from utils import nuller, query_output_writer
 # filenames from the download scripts.
 # TODO: Should these go in a settings file? Address when looking at pathlib.
 files_dir = os.getcwd() + "/files"
+pathExists = os.path.exists(files_dir)
+if not pathExists:
+    os.makedirs(files_dir)
+
 IA_PHYSICAL_DIRECT_DUMP = os.environ.get(
     "IA_PHYSICAL_DIRECT_DUMP", f"{files_dir}/ia_physical_direct_latest.tsv"
 )
