@@ -19,7 +19,6 @@ jobs:
       - run: ppip install --editable . || pip install . || true
       - run: mkdir --parents --verbose .mypy_cache
       - run: mypy --ignore-missing-imports --install-types --non-interactive .
-      - run: 
       - run: pytest --doctest-modules . || pytest .
       - run: shopt -s globstar && pyupgrade --py310-plus **/*.py || true
       - run: safety check
