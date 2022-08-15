@@ -13,7 +13,7 @@ jobs:
                          flake8-comprehensions flake8-simplify isort mypy pytest pyupgrade safety
       - run: bandit --recursive --skip B101 .  # B101 is assert statements
       - run: black --check .
-      - run: codespell  # --ignore-words-list="" --skip="*.css,*.js,*.lock"
+      - run: codespell --ignore-words-list="brower"  # --skip="*.css,*.js,*.lock"
       - run: flake8 . --count --max-complexity=10 --max-line-length=88 --show-source --statistics
       - run: isort --check-only --profile black .
       - run: ppip install --editable . || pip install . || true
