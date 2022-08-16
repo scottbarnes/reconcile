@@ -12,7 +12,7 @@ jobs:
       - run: pip install poetry
       - run: poetry install
       - run: poetry run python reconcile/main.py --help
-      - run: poetry run python reconcile/main.py fetch-data
+      - run: poetry run python reconcile/main.py fetch-data --show_prompt=False
       - run: poetry run python reconcile/main.py parse-data
       - run: poetry run python reconcile/main.py create-db
       - run: poetry run python reconcile/main.py all-reports
