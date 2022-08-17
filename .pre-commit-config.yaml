@@ -62,6 +62,6 @@ repos:
       types: [python]
       additional_dependencies: [pytest]
       entry: pytest
-      language: system
+      language: python
       pass_filenames: false
       always_run: true
