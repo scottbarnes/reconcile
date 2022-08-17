@@ -60,6 +60,7 @@ repos:
       name: pytest-check
       stages: [commit]
       types: [python]
+      additional_dependencies: pytest
       entry: pytest
       language: system
       pass_filenames: false
