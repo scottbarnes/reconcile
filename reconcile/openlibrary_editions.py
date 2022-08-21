@@ -41,7 +41,7 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
     Output:
     (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
 
-    :param row list: Items from a row of the Open Library editions dump.
+    :param list row: Items from a row of the Open Library editions dump.
     """
     # Annotate some variables to make this a bit cleaner. Maybe
     ol_edition_id: str | None = None
@@ -172,6 +172,10 @@ def insert_ol_data_in_ol_table(
 ) -> None:
     """
     Read the parsed Open Library edition TSVs and INSERT them into the ol table.
+    There is glob matching between the filename stem and suffix.
+
+    :param Database db: the database connection.
+    :param str filename: the base dump filename.
     """
     path = Path(filename)
 
@@ -216,6 +220,8 @@ def update_ia_editions_from_parsed_tsvs(
     Read the parsed Open Library editions TSV and use the parsed Open Library data to
     UPDATE the ia table with the ol_edition_id. For each ocaid in the ia table, this is
     to quickly compare the ia_ol_edition_id and ol_edition_id.
+
+    There is glob matching between the filename stem and suffix.
 
     :param Database db: The database connection to use.
     :param str filename: filename used for OL_EDITIONS_DUMP_PARSED. See setup.cfg.

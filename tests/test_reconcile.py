@@ -9,6 +9,13 @@ import pytest
 from reconcile import __version__
 from reconcile.database import Database
 from reconcile.main import Reconciler
+from reconcile.openlibrary_editions import (
+    make_chunk_ranges,
+    process_line,
+    read_and_convert_chunk,
+    write_chunk_to_disk,
+)
+from reconcile.utils import bufcount, path_check
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -18,6 +25,7 @@ FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
 OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
+OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_OL_IA_BACKLINKS = config.get(CONF_SECTION, "report_ol_ia_backlinks")
@@ -39,6 +47,11 @@ REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
 
 reconciler = Reconciler()
 
+###########
+# NOTE: Changing the Open Library seed data may require updates to the chunking tests.
+# If changing seed data, try to do so in the latter half of the file.
+###########
+
 
 def test_version():
     assert __version__ == "0.1.0"
@@ -55,11 +68,10 @@ def cleanup():
     clean-up.
     """
     # Theoretical setup.
-    # This could glob tests/{report_*} to clean up old reports before running. EXCEPT
-    # this would presumabbly delete every report but the last one because this runs
-    # before/after all tests?
+
     # Tests run here.
     yield
+
     # Cleanup
     db_file = Path(SQLITE_DB)
     if db_file.is_file():
@@ -217,6 +229,110 @@ def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) ->
     file = Path(REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD)
     assert file.is_file() is True
     assert file.read_text() == "guidetojohnmuirt0000star\tOL5756837M\n"
+
+
+def test_process_line() -> None:
+    """Process a row from the Open Library editions dump."""
+
+    # Edition has multiple works, ocaid, and ia source_record.
+    multi_works_source_rec = [
+        "type/edition",
+        "/books/OL1002158M",
+        "11",
+        "2021-02-12T23:39:01.417876",
+        r"""{"publishers": ["Addison-Wesley"], "identifiers": {"librarything": ["286951"], "goodreads": ["894978"]}, "subtitle": "the secrets of creative collaboration", "ia_box_id": ["IA150601"], "isbn_10": ["0201570513"], "covers": [3858623], "ia_loaded_id": ["organizinggenius00benn"], "lc_classifications": ["HD58.9 .B45 1997"], "key": "/books/OL1002158M", "authors": [{"key": "/authors/OL225457A"}], "publish_places": ["Reading, Mass"], "contributions": ["Biederman, Patricia Ward."], "pagination": "xvi, 239 p. ;", "source_records": ["marc:marc_records_scriblio_net/part25.dat:199740929:947", "marc:marc_cca/b10621386.out:27805251:1544", "ia:organizinggenius00benn", "marc:marc_loc_2016/BooksAll.2016.part25.utf8:105728045:947", "ia:organizinggenius0000benn"], "title": "Organizing genius", "dewey_decimal_class": ["158.7"], "notes": {"type": "/type/text", "value": "Includes bibliographical references (p. 219-229) and index.\n\"None of us is as smart as all of us.\""}, "number_of_pages": 239, "languages": [{"key": "/languages/eng"}], "lccn": ["96041454"], "subjects": ["Organizational effectiveness -- Case studies", "Strategic alliances (Business) -- Case studies", "Creative thinking -- Case studies", "Creative ability in business -- Case studies"], "publish_date": "1997", "publish_country": "mau", "by_statement": "Warren Bennis, Patricia Ward Biederman.", "works": [{"key": "/works/OL1883432W"}, {"key": "/works/OL0000000W"}], "type": {"key": "/type/edition"}, "ocaid": "organizinggenius0000benn", "latest_revision": 11, "revision": 11, "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "last_modified": {"type": "/type/datetime", "value": "2021-02-12T23:39:01.417876"}}""",  # noqa E501
+    ]
+    # No ocaid, no multiple works, no ia source_record.
+    noocaid_nomulti_no_ia = [
+        "/type/edition",
+        "/books/OL10000149M",
+        "2",
+        "2010-03-11T23:51:36.723486",
+        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "works": [{"key": "/works/OL14903292W"}], "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
+    ]
+    # No work
+    no_work = [
+        "/type/edition",
+        "/books/OL10000149M",
+        "2",
+        "2010-03-11T23:51:36.723486",
+        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
+    ]
+
+    assert process_line(multi_works_source_rec) == (
+        "OL1002158M",
+        "OL1883432W",
+        "organizinggenius0000benn",
+        1,
+        1,
+    )
+    assert process_line(noocaid_nomulti_no_ia) == (
+        "OL10000149M",
+        "OL14903292W",
+        None,
+        0,
+        0,
+    )
+    assert process_line(no_work) == ("OL10000149M", None, None, 0, 0)
+
+
+def test_make_chunk_ranges() -> None:
+    """Make sure chunk ranges create properly."""
+    assert make_chunk_ranges(OL_EDITIONS_DUMP, 10_000) == [
+        (0, 10884, "./tests/seed_ol_dump_editions.txt"),
+        (10884, 31768, "./tests/seed_ol_dump_editions.txt"),
+    ]
+
+
+def test_read_and_covert_chunk() -> None:
+    """Read the first entry from chunk."""
+    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
+    gen = read_and_convert_chunk(chunk)
+    assert next(gen) == ("OL10000149M", "OL14903292W", None, 0, 0)  # type: ignore
+    for _ in gen:
+        pass
+
+
+def test_write_chunk_to_disk() -> None:
+    """Write a chunk to disk."""
+    path = Path(OL_EDITIONS_DUMP)
+    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
+    write_chunk_to_disk(chunk, OL_EDITIONS_DUMP_PARSED)
+    # Grab the output files and get the first path object to read it and see if the
+    # third-listed edition is there.
+    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+    file = next(files)
+    assert (
+        "/type/edition\t/books/OL1002158M\t11\t2021-02-12T23:39:01.417876"
+        in file.read_text()
+    )
+
+
+def test_bufcount() -> None:
+    """Count the number of lines in a file."""
+    f = Path("peaks.txt")
+    if f.exists():
+        raise Exception("peaks.txt exists.")
+    f.write_text("Olancha\nPeak\n")
+    print(f"peak: {f.read_text()}")
+    assert bufcount("peaks.txt") == 2
+    f.unlink()
+
+
+def test_bufcount_fails_without_file() -> None:
+    """Verify bufcount() fails without a file."""
+    with pytest.raises(SystemExit):
+        bufcount("Mount Brewer")
+
+
+def test_path_check() -> None:
+    """Verify the path creation helper utility works."""
+    path = Path("Sierra_Peaks_Section")
+    if path.exists():
+        raise Exception("'Sierra' directory exists.")
+    path_check("Sierra_Peaks_Section")
+    assert path.is_dir() is True
+    path.rmdir()
 
 
 # TODO: Remove debug info.
