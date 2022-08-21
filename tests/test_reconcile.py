@@ -81,6 +81,11 @@ def cleanup():
     if error_file.is_file():
         error_file.unlink()
 
+    path = Path(OL_EDITIONS_DUMP_PARSED)
+    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+    for file in files:
+        file.unlink()
+
 
 @pytest.fixture()
 def setup_db():
@@ -95,52 +100,166 @@ def setup_db():
     yield db  # See the Database class
 
 
-def test_get_an_ia_db_item(setup_db: Database):
-    """
-    Get an Internet Archive DB item to make sure inserting from our seed
-    data works.
-    """
-    db = setup_db
+#####################################
+# Reading, parsing and inserting data
+#####################################
+
+
+def test_create_db_inserts_data() -> None:
+    """Get an item from the ia and ol tables."""
+    db = Database(SQLITE_DB)
+    reconciler.create_db(db)
     db.execute(
         """SELECT ia_id, ia_ol_edition_id FROM ia WHERE ia_ol_edition_id =
         'OL1426680M'"""
     )
     assert db.fetchall() == [("goldenass0000apul_k5d0", "OL1426680M")]
 
-
-def test_get_an_ol_db_item(setup_db: Database):
-    """
-    Get an Internet Archive DB item to make sure inserting from our seed
-    data works.
-    """
-    db = setup_db
     db.execute("""SELECT * FROM ol WHERE ol_edition_id = 'OL1002158M'""")
     assert db.fetchall() == [
         ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1, 1)
     ]
 
 
-# @pytest.fixture()
-# def test_parse_ol_dump():
-#     """
-#     Parse the Open Library editions dump insert an item, and get an item to
-#     make sure it works.
-#     """
-#     reconciler.parse_ol_dump_and_write_ids(OL_EDITIONS_DUMP, OL_EDITIONS_DUMP_PARSED)
-#     output = []
-#     with open(OL_EDITIONS_DUMP_PARSED) as file:
-#         reader = csv.reader(file, delimiter="\t")
-#         output = list(reader)
+def test_process_line() -> None:
+    """Process a row from the Open Library editions dump."""
 
-#         assert len(output) == 14
-#         assert [
-#             "OL1002158M",
-#             "OL1883432W",
-#             "organizinggenius0000benn",
-#             "1",
-#             "1",
-#         ] in output
-#         assert ["OL10000149M"] not in output  # Test broken b/c incomplete list.
+    # Edition has multiple works, ocaid, and ia source_record.
+    multi_works_source_rec = [
+        "type/edition",
+        "/books/OL1002158M",
+        "11",
+        "2021-02-12T23:39:01.417876",
+        r"""{"publishers": ["Addison-Wesley"], "identifiers": {"librarything": ["286951"], "goodreads": ["894978"]}, "subtitle": "the secrets of creative collaboration", "ia_box_id": ["IA150601"], "isbn_10": ["0201570513"], "covers": [3858623], "ia_loaded_id": ["organizinggenius00benn"], "lc_classifications": ["HD58.9 .B45 1997"], "key": "/books/OL1002158M", "authors": [{"key": "/authors/OL225457A"}], "publish_places": ["Reading, Mass"], "contributions": ["Biederman, Patricia Ward."], "pagination": "xvi, 239 p. ;", "source_records": ["marc:marc_records_scriblio_net/part25.dat:199740929:947", "marc:marc_cca/b10621386.out:27805251:1544", "ia:organizinggenius00benn", "marc:marc_loc_2016/BooksAll.2016.part25.utf8:105728045:947", "ia:organizinggenius0000benn"], "title": "Organizing genius", "dewey_decimal_class": ["158.7"], "notes": {"type": "/type/text", "value": "Includes bibliographical references (p. 219-229) and index.\n\"None of us is as smart as all of us.\""}, "number_of_pages": 239, "languages": [{"key": "/languages/eng"}], "lccn": ["96041454"], "subjects": ["Organizational effectiveness -- Case studies", "Strategic alliances (Business) -- Case studies", "Creative thinking -- Case studies", "Creative ability in business -- Case studies"], "publish_date": "1997", "publish_country": "mau", "by_statement": "Warren Bennis, Patricia Ward Biederman.", "works": [{"key": "/works/OL1883432W"}, {"key": "/works/OL0000000W"}], "type": {"key": "/type/edition"}, "ocaid": "organizinggenius0000benn", "latest_revision": 11, "revision": 11, "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "last_modified": {"type": "/type/datetime", "value": "2021-02-12T23:39:01.417876"}}""",  # noqa E501
+    ]
+    # No ocaid, no multiple works, no ia source_record.
+    noocaid_nomulti_no_ia = [
+        "/type/edition",
+        "/books/OL10000149M",
+        "2",
+        "2010-03-11T23:51:36.723486",
+        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "works": [{"key": "/works/OL14903292W"}], "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
+    ]
+    # No work
+    no_work = [
+        "/type/edition",
+        "/books/OL10000149M",
+        "2",
+        "2010-03-11T23:51:36.723486",
+        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
+    ]
+
+    assert process_line(multi_works_source_rec) == (
+        "OL1002158M",
+        "OL1883432W",
+        "organizinggenius0000benn",
+        1,
+        1,
+    )
+    assert process_line(noocaid_nomulti_no_ia) == (
+        "OL10000149M",
+        "OL14903292W",
+        None,
+        0,
+        0,
+    )
+    assert process_line(no_work) == ("OL10000149M", None, None, 0, 0)
+
+
+def test_make_chunk_ranges() -> None:
+    """Make sure chunk ranges create properly."""
+    assert make_chunk_ranges(OL_EDITIONS_DUMP, 10_000) == [
+        (0, 10884, "./tests/seed_ol_dump_editions.txt"),
+        (10884, 31768, "./tests/seed_ol_dump_editions.txt"),
+    ]
+
+
+def test_read_and_covert_chunk() -> None:
+    """Read the first entry from chunk."""
+    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
+    gen = read_and_convert_chunk(chunk)
+    assert next(gen) == ("OL10000149M", "OL14903292W", None, 0, 0)  # type: ignore
+    for _ in gen:
+        pass
+
+
+def test_write_chunk_to_disk() -> None:
+    """Write a chunk to disk."""
+    # Delete any existing written chunks.
+    path = Path(OL_EDITIONS_DUMP_PARSED)
+    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+    for file in files:
+        file.unlink()
+
+    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
+    write_chunk_to_disk(chunk, OL_EDITIONS_DUMP_PARSED)
+
+    # The written files have random hex strings, so use globbing to get the filenames
+    # to search the chunk. Note: the search term must be contained with what would be
+    # within thte first chunk, as this is just writing one chunk. Something too far
+    # down the unparsed file won't be in the first chunk.
+    path = Path(OL_EDITIONS_DUMP_PARSED)
+    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+
+    def find_edition(files):
+        for file in files:
+            print(f"Searching: {file}")
+            if (
+                "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
+                in file.read_text()
+            ):
+                return True
+        return False
+
+    assert find_edition(files) is True
+
+
+###########
+# Utilities
+###########
+
+
+def test_bufcount() -> None:
+    """Count the number of lines in a file."""
+    f = Path("peaks.txt")
+    if f.exists():
+        raise Exception("peaks.txt exists.")
+    f.write_text("Olancha\nPeak\n")
+    assert bufcount("peaks.txt") == 2
+    f.unlink()
+
+
+def test_bufcount_fails_without_file() -> None:
+    """Verify bufcount() fails without a file."""
+    with pytest.raises(SystemExit):
+        bufcount("MountBrewer.txt")
+
+
+def test_path_check() -> None:
+    """Verify the path creation helper utility works."""
+    path = Path("Sierra_Peaks_Section")
+    if path.exists():
+        raise Exception("'Sierra' directory exists.")
+    path_check("Sierra_Peaks_Section")
+    assert path.is_dir() is True
+    path.rmdir()
+
+
+def test_create_ia_table_exits_if_db_exists(setup_db: Database) -> None:
+    with pytest.raises(SystemExit):
+        db = setup_db
+        reconciler.create_ia_table(db)
+
+
+def test_create_ol_table_exits_if_db_exists(setup_db: Database) -> None:
+    with pytest.raises(SystemExit):
+        db = setup_db
+        reconciler.create_ol_table(db)
+
+
+#########
+# Reports
+#########
 
 
 def test_query_ol_id_differences(setup_db: Database):
@@ -231,125 +350,40 @@ def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) ->
     assert file.read_text() == "guidetojohnmuirt0000star\tOL5756837M\n"
 
 
-def test_process_line() -> None:
-    """Process a row from the Open Library editions dump."""
-
-    # Edition has multiple works, ocaid, and ia source_record.
-    multi_works_source_rec = [
-        "type/edition",
-        "/books/OL1002158M",
-        "11",
-        "2021-02-12T23:39:01.417876",
-        r"""{"publishers": ["Addison-Wesley"], "identifiers": {"librarything": ["286951"], "goodreads": ["894978"]}, "subtitle": "the secrets of creative collaboration", "ia_box_id": ["IA150601"], "isbn_10": ["0201570513"], "covers": [3858623], "ia_loaded_id": ["organizinggenius00benn"], "lc_classifications": ["HD58.9 .B45 1997"], "key": "/books/OL1002158M", "authors": [{"key": "/authors/OL225457A"}], "publish_places": ["Reading, Mass"], "contributions": ["Biederman, Patricia Ward."], "pagination": "xvi, 239 p. ;", "source_records": ["marc:marc_records_scriblio_net/part25.dat:199740929:947", "marc:marc_cca/b10621386.out:27805251:1544", "ia:organizinggenius00benn", "marc:marc_loc_2016/BooksAll.2016.part25.utf8:105728045:947", "ia:organizinggenius0000benn"], "title": "Organizing genius", "dewey_decimal_class": ["158.7"], "notes": {"type": "/type/text", "value": "Includes bibliographical references (p. 219-229) and index.\n\"None of us is as smart as all of us.\""}, "number_of_pages": 239, "languages": [{"key": "/languages/eng"}], "lccn": ["96041454"], "subjects": ["Organizational effectiveness -- Case studies", "Strategic alliances (Business) -- Case studies", "Creative thinking -- Case studies", "Creative ability in business -- Case studies"], "publish_date": "1997", "publish_country": "mau", "by_statement": "Warren Bennis, Patricia Ward Biederman.", "works": [{"key": "/works/OL1883432W"}, {"key": "/works/OL0000000W"}], "type": {"key": "/type/edition"}, "ocaid": "organizinggenius0000benn", "latest_revision": 11, "revision": 11, "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "last_modified": {"type": "/type/datetime", "value": "2021-02-12T23:39:01.417876"}}""",  # noqa E501
-    ]
-    # No ocaid, no multiple works, no ia source_record.
-    noocaid_nomulti_no_ia = [
-        "/type/edition",
-        "/books/OL10000149M",
-        "2",
-        "2010-03-11T23:51:36.723486",
-        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "works": [{"key": "/works/OL14903292W"}], "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
-    ]
-    # No work
-    no_work = [
-        "/type/edition",
-        "/books/OL10000149M",
-        "2",
-        "2010-03-11T23:51:36.723486",
-        r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
-    ]
-
-    assert process_line(multi_works_source_rec) == (
-        "OL1002158M",
-        "OL1883432W",
-        "organizinggenius0000benn",
-        1,
-        1,
-    )
-    assert process_line(noocaid_nomulti_no_ia) == (
-        "OL10000149M",
-        "OL14903292W",
-        None,
-        0,
-        0,
-    )
-    assert process_line(no_work) == ("OL10000149M", None, None, 0, 0)
-
-
-def test_make_chunk_ranges() -> None:
-    """Make sure chunk ranges create properly."""
-    assert make_chunk_ranges(OL_EDITIONS_DUMP, 10_000) == [
-        (0, 10884, "./tests/seed_ol_dump_editions.txt"),
-        (10884, 31768, "./tests/seed_ol_dump_editions.txt"),
-    ]
-
-
-def test_read_and_covert_chunk() -> None:
-    """Read the first entry from chunk."""
-    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
-    gen = read_and_convert_chunk(chunk)
-    assert next(gen) == ("OL10000149M", "OL14903292W", None, 0, 0)  # type: ignore
-    for _ in gen:
-        pass
-
-
-def test_write_chunk_to_disk() -> None:
-    """Write a chunk to disk."""
-    path = Path(OL_EDITIONS_DUMP)
-    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
-    write_chunk_to_disk(chunk, OL_EDITIONS_DUMP_PARSED)
-    # Grab the output files and get the first path object to read it and see if the
-    # third-listed edition is there.
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
-    file = next(files)
-    assert (
-        "/type/edition\t/books/OL1002158M\t11\t2021-02-12T23:39:01.417876"
-        in file.read_text()
-    )
-
-
-def test_bufcount() -> None:
-    """Count the number of lines in a file."""
-    f = Path("peaks.txt")
-    if f.exists():
-        raise Exception("peaks.txt exists.")
-    f.write_text("Olancha\nPeak\n")
-    print(f"peak: {f.read_text()}")
-    assert bufcount("peaks.txt") == 2
-    f.unlink()
-
-
-def test_bufcount_fails_without_file() -> None:
-    """Verify bufcount() fails without a file."""
-    with pytest.raises(SystemExit):
-        bufcount("Mount Brewer")
-
-
-def test_path_check() -> None:
-    """Verify the path creation helper utility works."""
-    path = Path("Sierra_Peaks_Section")
-    if path.exists():
-        raise Exception("'Sierra' directory exists.")
-    path_check("Sierra_Peaks_Section")
-    assert path.is_dir() is True
-    path.rmdir()
-
-
-# TODO: Remove debug info.
-# sql = "SELECT * FROM ia WHERE ia_ol_edition_id IS NOT ol_edition_id"
-# return self.query(sql)
-def test_print_out_db(setup_db: Database):
+def test_all_reports(setup_db) -> None:
+    """This just cleans up and verifies reconciler.all_reports() is facially working."""
     db = setup_db
-    print("Printing IA table")
-    sql = "SELECT * FROM ia"
-    result = db.query(sql)
-    for row in result:
-        print(row)
-    assert True is True
+    # Ensure no old reports remain.
+    reports = Path(FILES_DIR).glob("report_*")
+    for report in reports:
+        report.unlink()
 
-    print("\nPrinting OL table")
-    sql = "SELECT * FROM ol"
-    result = db.query(sql)
-    for row in result:
-        print(row)
-    assert True is True
+    reconciler.all_reports(db)
+    report_count = 0
+    reports = Path(FILES_DIR).glob("report_*")
+    for report in reports:
+        report.unlink()
+        report_count += 1
+
+    assert report_count == 6
+
+
+##################
+# Some debug tests
+##################
+
+# def test_print_out_db(setup_db: Database):
+#     db = setup_db
+#     print("Printing IA table")
+#     sql = "SELECT * FROM ia"
+#     result = db.query(sql)
+#     for row in result:
+#         print(row)
+#     assert True is True
+
+#     print("\nPrinting OL table")
+#     sql = "SELECT * FROM ol"
+#     result = db.query(sql)
+#     for row in result:
+#         print(row)
+#     assert True is True

@@ -309,17 +309,17 @@ class Reconciler:
 
         :param Database db: an instance of the database.py class.
         """
-        reconciler.query_ol_id_differences(db)
+        self.query_ol_id_differences(db)
         print("\n")
-        reconciler.get_editions_with_multiple_works(db)
+        self.get_editions_with_multiple_works(db)
         print("\n")
-        reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+        self.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
         print("\n")
-        reconciler.get_ol_edition_has_ocaid_but_no_ia_source_record(db)
+        self.get_ol_edition_has_ocaid_but_no_ia_source_record(db)
         print("\nThe next queries use joins and are slower.\n")
-        reconciler.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
+        self.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
         print("\n")
-        reconciler.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
+        self.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
 
 
 if __name__ == "__main__":

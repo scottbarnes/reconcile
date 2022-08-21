@@ -36,9 +36,9 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
     into the database.
 
     Input:
-    ['/type/edition', '/books/OL10000149M', '2', '2010-03-11T23:51:36.723486', '{json}']
+    ['/type/edition', '/books/OL10000149M', '2', '2010-03-11T23:51:36.723486', '{JSON}']
 
-    Output:
+    Output (all from the {JSON}):
     (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
 
     :param list row: Items from a row of the Open Library editions dump.
@@ -146,6 +146,9 @@ def write_chunk_to_disk(
 ) -> None:
     """
     Take a chunk and write it to TSV with a unique filename based on {output_base}.
+    With Open Library Edition data written chunks look like:
+    OL1001295M\tOL3338473W\tjewishchristiand0000boys\t0\t1
+    edition_id\twork_id\tocaid\thas_multiple_works\thas_ia_source_record
 
     :param iterable converted_chunk: converted chunk to write.
     :param str output_base: base filename for output.
@@ -199,8 +202,8 @@ def insert_ol_data_in_ol_table(
                 mm = mmap.mmap(fp.fileno(), 0)
                 for line in iter(mm.readline, b""):
                     row = line.decode("utf-8").split("\t")
-                    # Transform empty strings to None.
-                    row = list(map(nuller, row))
+                    # Convert empty strings to None because in CSV None is stored as "".
+                    row = [nuller(column) for column in row]
                     pbar.update(1)
                     if len(row) != 5:
                         record_errors(row, REPORT_ERRORS)
