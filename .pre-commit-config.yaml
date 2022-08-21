@@ -56,6 +56,11 @@ repos:
         args:
           - --py310-plus
 
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.1.0
+    hooks:
+      - id: codespell  # See setup.cfg for args
+
   - repo: local
     hooks:
     - id: pytest-check

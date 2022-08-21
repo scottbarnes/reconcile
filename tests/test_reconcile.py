@@ -63,7 +63,7 @@ def cleanup():
     multiprocessing.pool.imap_unordered() needs to serialize its arguments, and passing
     a database connection led to serialization issues. Because each connection to an
     SQLite :memory: database is a unique DB, and because of difficult passing arguments
-    through imap_unordered(), this is a way to use enviroment variables for the
+    through imap_unordered(), this is a way to use environment variables for the
     database, for everythting to use the same database, and for there to be some
     clean-up.
     """
@@ -196,7 +196,7 @@ def test_write_chunk_to_disk() -> None:
 
     # The written files have random hex strings, so use globbing to get the filenames
     # to search the chunk. Note: the search term must be contained with what would be
-    # within thte first chunk, as this is just writing one chunk. Something too far
+    # within the first chunk, as this is just writing one chunk. Something too far
     # down the unparsed file won't be in the first chunk.
     path = Path(OL_EDITIONS_DUMP_PARSED)
     files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
