@@ -1,6 +1,17 @@
+import configparser
 import sqlite3
-from collections.abc import Iterator
+import sys
+from collections.abc import Iterable
 from typing import Any
+
+from utils import path_check
+
+# Load configuration
+config = configparser.ConfigParser()
+config.read("setup.cfg")
+CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
+FILES_DIR = config.get(CONF_SECTION, "files_dir")
+REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 
 
 class Database:
@@ -10,7 +21,11 @@ class Database:
     """
 
     def __init__(self, name: str):
-        self._conn = sqlite3.connect(name)
+        # Create any necessary paths. This deserves a better fix.
+        paths = [FILES_DIR, REPORTS_DIR]
+        [path_check(d) for d in paths]
+
+        self._conn = sqlite3.connect(name, timeout=60)
         self._cursor = self._conn.cursor()
 
     def __enter__(self):
@@ -38,7 +53,7 @@ class Database:
     def execute(self, sql: str, params: tuple = None):
         self.cursor.execute(sql, params or ())
 
-    def executemany(self, sql: str, params: tuple | Iterator | None = None):
+    def executemany(self, sql: str, params: tuple | Iterable | None = None):
         self.cursor.executemany(sql, params or ())
 
     def fetchall(self) -> list[Any]:
@@ -109,7 +124,7 @@ class Database:
             ia.ia_id,
             ia.ia_ol_edition_id
         FROM
-            ia inner join ol
+            ia INNER JOIN ol
             ON ia.ia_ol_edition_id = ol.ol_edition_id
         WHERE
             ol.ol_ocaid IS NULL

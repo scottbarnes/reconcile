@@ -19,19 +19,14 @@ invoked directly:
 - `poetry shell`
 - `python reconcile/main.py`
 
+### Feedback
+Not that this will get much use, but I'd love to hear if people encounter
+`sqlite3.OperationalError: database is locked` while running create-db. If that happens
+one can remove SQLite db in `files/reconcile.db` and try the import again.
+
 ### Configuration
 There isn't much configuration, but if you want to store the files in somewhere other
-than /path/to/reconcile/files, you can export the following, hopefully relatively
-self-explanatory environment variables:
-- IA_PHYSICAL_DIRECT_DUMP
-- OL_EDITIONS_DUMP
-- OL_EDITIONS_DUMP_PARSED
-- REPORT_OL_IA_BACKLINKS
-- REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION
-- REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN
-- REPORT_EDITIONS_WITH_MULTIPLE_WORKS
-- REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID
-- REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD
+than /path/to/reconcile/files, take a look at the values under [reconcile] in `setup.cfg`.
 
 ### Running reconcile
 Whether you `poetry run python reconcile/main.py` or run `poetry shell` and then `python reconcile/main.py`, either way, you should see something similar to:
@@ -48,19 +43,15 @@ COMMANDS
      fetch-data
        Download the latest OL editions dump from https://openlibrary.org/data/ol_dump_editions_latest.txt.gz and the latest (ideally) [date]_physical_direct.tsv, from https://archive.org/download/ia-abc-historical-data/ which has the ia_od <-> ia_ol_id mapping.
 
-     parse-data
-       Parse an Open Library editions dump from https://openlibrary.org/developers/dumps and write the output to a .tsv in the format: ol_edition_id   ol_work_id      ol_ocaid        has_multiple_works      has_ia_source_record
-
      create-db
-       Create the tables and insert the data. NOTE: You must parse the data first.
+       Parse the data, create the tables, and insert the data. NOTE: you must fetch the data first.
 
      all-reports
-       Just run all the reports because these commands are way too long to type.
+       Just run all the reports because typing them individually too long.
 ```
 Run the commands in order, top to bottom, to:
 - download the necessary database dumps;
-- parse them;
-- create the database and import the parsed data, and
+- create the database, parse and import the data, and
 - run the reports.
 
 ### Step by step
@@ -68,20 +59,14 @@ Run the commands in order, top to bottom, to:
 poetry run python reconcile/main.py fetch-data
 ```
 Fetch the exported database data. This takes me about 8 minutes.
-Note: This is a convenience function. The data can be manually into /you/path/to/reconcile/files
+Note: This is a convenience function. The data can be manually into /your/path/to/reconcile/files
 - Open Library Editions dump: https://openlibrary.org/data/ol_dump_editions_latest.txt.gz
 - The newest Internet Archive physical_direct.tsv: https://archive.org/download/ia-abc-historical-data/ (it's near the bottom)
 
 ```
-poetry run reconcile/main.py parse-data
-```
-Parse the data so it's readable more quickly by reconcile. This takes me about 10
-minutes, but it only needs to be done once.
-
-```
 poetry run python reconcile/main.py create-db
 ```
-Create the database tables and insert the parased data. This takes about 6 minutes on my
+Parse the data, create the database tables, and insert the parased data. This takes about 6 minutes on my
 computer, but it only needs to be done once.
 
 ```
@@ -102,6 +87,10 @@ The handful of reports are:
 - Total Open Library Editions with more than on associated work
 - Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID
 - Total Open Library Editions that have an OCAID but have no Internet Archive entry in their source_records
+
+There are also a handful of checks for errors, with recording to `reports/report_errors.txt`
+See `setup.cfg` to change the location. *NOTE*: This file isn't deleted to
+automatically; rather, successive imports will append to it.
 
 ### Contributing
 - Run the tests manually: `poetry run pytest`

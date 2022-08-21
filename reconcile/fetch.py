@@ -1,3 +1,12 @@
+"""
+Convenience functions to automatically download and extract the neecessary data files.
+An alternative is to get the files from:
+    https://archive.org/download/ia-abc-historical-data/
+    https://openlibrary.org/data/ol_dump_editions_latest.txt.gz
+With that done, they can be put in ./files/ (see setup.cfg to change). The Open Library
+editions dump will need to be extracted first.
+"""
+import configparser
 import datetime
 import gzip
 import os
@@ -6,6 +15,13 @@ import sys
 from inspect import cleandoc
 
 import requests
+from tqdm.auto import tqdm
+
+# Load configuration
+config = configparser.ConfigParser()
+config.read("setup.cfg")
+CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
+FILES_DIR = config.get(CONF_SECTION, "files_dir")
 
 
 def download_file(urls: list[str]) -> str:
@@ -25,8 +41,15 @@ def download_file(urls: list[str]) -> str:
             else:
                 urls = []
 
-            with open(local_filename, "wb") as file:
-                shutil.copyfileobj(response.raw, file)
+            result = response.headers.get("Content-Length")
+            total_length = int(result) if result else 0
+
+            with tqdm.wrapattr(
+                response.raw, "read", total=total_length, desc=""
+            ) as raw:
+
+                with open(local_filename, "wb") as file:
+                    shutil.copyfileobj(raw, file, 128 * 1024)
 
     return local_filename
 
@@ -38,7 +61,7 @@ def extract_gzip(file: str) -> str:
     # Parse file.name.ext.gz to file.name.ext
     output_filename = ".".join(file.split(".")[:-1])
     with gzip.open(file, "rb") as in_file, open(output_filename, "wb") as out_file:
-        shutil.copyfileobj(in_file, out_file)
+        shutil.copyfileobj(in_file, out_file, 128 * 1024)
 
     return output_filename
 
@@ -113,7 +136,7 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
                 f"""This is a convenience function to download the necessary files into
             {cwd + '/files/'}. As of August 2022 this takes about 40GB. If you wish to
             store the files elsewhere, see README.md for information on manually
-            fetching the files and exporting environment variables to use them.
+            fetching the files and editing setup.cfg to specify their locations.
 
             (Specify --show_prompt=False to suppress this message.)
 
@@ -132,31 +155,27 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
             sys.exit(0)
 
     # User is continuing or skipped the prompt.
-    # Create ./files if necessary.
-    files_exists = os.path.exists(cwd + "/files")
-    if not files_exists:
-        os.mkdir(cwd + "/files")
-
-    # Use ./files as the CWD from now on.
-    os.chdir(cwd + "/files")
+    # Use FILES_DIR as the CWD from now on.
+    os.chdir(FILES_DIR)
     cwd = os.getcwd()
 
     # Fetch the IA and OL files, along with renaming and extracting them.
     # See README.rst for a clearer explanation of which files are being
     # downloaded.
-    print("NOTE: Downloads/extraction can take some time and there is no status bar.")
     print(
         f"Trying to fetch the Internet Archive dump from {IA_PHYSICAL_DIRECT_DUMP_URLS}"
     )
+    print("This may take a while. Go get some runts.")
     ia_file = download_file(IA_PHYSICAL_DIRECT_DUMP_URLS)
     # Rename the IA file to something consistent.
     os.replace(ia_file, "ia_physical_direct_latest.tsv")
-    ia_file = cwd + "/ia_physical_direct_latest.tsv"
+    ia_file = "ia_physical_direct_latest.tsv"
     print(f"Trying to fetch the Open Library editions dump from {OL_EDITIONS_DUMP_URL}")
     ol_file_gz = download_file(OL_EDITIONS_DUMP_URL)
 
     # Only the OL dump needs extraction
     print(f"Trying to extract {ol_file_gz}")
+    print("Note: this has no progress bar.")
     ol_file = extract_gzip(ol_file_gz)
     os.remove(ol_file_gz)
 

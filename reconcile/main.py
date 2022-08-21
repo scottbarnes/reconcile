@@ -1,61 +1,50 @@
-import csv  # TODO: Decide between CSV and JSON for everything?
-import os
+import configparser
+import csv
+import multiprocessing as mp
 import sqlite3
 import sys
-from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import fire
-import orjson
 from database import Database
 from fetch import get_and_extract_data
-from utils import nuller, query_output_writer
+from openlibrary_editions import (
+    insert_ol_data_in_ol_table,
+    make_chunk_ranges,
+    update_ia_editions_from_parsed_tsvs,
+    write_chunk_to_disk,
+)
+from tqdm import tqdm
+from utils import bufcount, nuller, path_check, query_output_writer
 
-# Read the file paths from environment variables first, otherwise try to use the
-# filenames from the download scripts.
-# TODO: Should these go in a settings file? Address when looking at pathlib.
-files_dir = os.getcwd() + "/files"
-pathExists = os.path.exists(files_dir)
-if not pathExists:
-    os.makedirs(files_dir)
-
-IA_PHYSICAL_DIRECT_DUMP = os.environ.get(
-    "IA_PHYSICAL_DIRECT_DUMP", f"{files_dir}/ia_physical_direct_latest.tsv"
+# Load configuration
+config = configparser.ConfigParser()
+config.read("setup.cfg")
+CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
+FILES_DIR = config.get(CONF_SECTION, "files_dir")
+REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
+IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
+OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
+OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
+SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
+REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
+REPORT_OL_IA_BACKLINKS = config.get(CONF_SECTION, "report_ol_ia_backlinks")
+REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = config.get(
+    CONF_SECTION, "report_ol_has_ocaid_ia_has_no_ol_edition"
 )
-OL_EDITIONS_DUMP = os.environ.get(
-    "OL_EDITIONS_DUMP", f"{files_dir}/ol_dump_editions_latest.txt"
+REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN = config.get(
+    CONF_SECTION, "report_ol_has_ocaid_ia_has_no_ol_edition_join"
 )
-OL_EDITIONS_DUMP_PARSED = os.environ.get(
-    "OL_EDITIONS_DUMP_PARSED", f"{files_dir}/ol_dump_editions_latest_parsed.tsv"
+REPORT_EDITIONS_WITH_MULTIPLE_WORKS = config.get(
+    CONF_SECTION, "report_edition_with_multiple_works"
 )
-SQLITE_DB = os.environ.get("SQLITE_DB", f"{files_dir}/ol_test.db")
-# Reports
-REPORT_OL_IA_BACKLINKS = os.environ.get(
-    "REPORT_OL_IA_BACKLINKS", f"{files_dir}/report_ol_ia_backlinks.tsv"
+REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = config.get(
+    CONF_SECTION, "report_ia_links_to_ol_but_ol_edition_has_no_ocaid"
 )
-REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = os.environ.get(
-    "REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION",
-    f"{files_dir}/report_ol_has_ocaid_ia_has_no_ol_edition.tsv",
+REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
+    CONF_SECTION, "report_ol_edition_has_ocaid_but_no_source_record"
 )
-REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN = os.environ.get(
-    "REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION_JOIN",
-    f"{files_dir}/report_ol_has_ocaid_ia_has_no_ol_edition_join.tsv",
-)
-REPORT_EDITIONS_WITH_MULTIPLE_WORKS = os.environ.get(
-    "REPORT_EDITIONS_WITH_MULTIPLE_WORKS",
-    f"{files_dir}/report_edition_with_multiple_works.tsv",
-)
-REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = os.environ.get(
-    "REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID",
-    f"{files_dir}/report_ia_links_to_ol_but_ol_edition_has_no_ocaid.tsv",
-)
-REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = os.environ.get(
-    "REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD",
-    f"{files_dir}/report_ol_edition_has_ocaid_but_no_source_record.tsv",
-)
-
-# Custom types
-# IA_JSON = dict[str, Union[str, list[str], list[dict[str, str]], dict[str, str]]]
 
 
 class Reconciler:
@@ -81,18 +70,20 @@ class Reconciler:
 
         # Create the ia table.
         try:
+            # db.execute("PRAGMA synchronous = OFF")  # Speed up.
+            # db.execute("PRAGMA journal_mode = MEMORY")
             db.execute(
                 "CREATE TABLE ia (ia_id TEXT, ia_ol_edition_id TEXT, \
-                ia_ol_work_id TEXT, ol_edition_id TEXT, ol_aid TEXT)"
+                ia_ol_work_id TEXT, ol_edition_id TEXT)"
             )
-            # Indexing ia_id massively speeds up adding OL records.
-            db.execute("CREATE INDEX ia_idx ON ia(ia_id)")
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
             sys.exit(1)
 
         # Populate the DB with IA physical direct dump data.
-        with open(ia_dump, newline="") as file:
+        total = bufcount(ia_dump)
+        print("Inserting the Internet Archive records.")
+        with open(ia_dump, newline="") as file, tqdm(total=total) as pbar:
             reader = csv.reader(file, delimiter="\t")
             for row in reader:
                 # TODO: Is this 'better' than try/except?
@@ -106,186 +97,94 @@ class Reconciler:
                 # TODO: Is there any point to setting values to Null rather
                 # than None in the DB?
                 db.execute(
-                    "INSERT INTO ia VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO ia VALUES (?, ?, ?, ?)",
                     (
                         nuller(ia_id),
                         nuller(ia_ol_edition_id),
                         nuller(ia_ol_work_id),
                         None,
-                        None,
                     ),
                 )
+                pbar.update(1)
+        # Indexing ia_id massively speeds up adding OL records.
+        # But doing it first slows inserts.
+        db.execute("CREATE INDEX ia_idx ON ia(ia_id)")
         db.commit()
+        # db.close()
 
     def create_ol_table(
-        self, db: Database, ol_dump_parsed: str = OL_EDITIONS_DUMP_PARSED
-    ) -> None:
+        self,
+        db: Database,
+        filename: str = OL_EDITIONS_DUMP,
+        size: int = 1024 * 1024 * 1024,
+    ):
         """
-        Create Open Library table and populate it.
+        Parse the (uncompressed) Open Library editions dump named {filename} and insert
+        it into {db}.
+        Dumps available at: https://openlibrary.org/developers/dumps
 
-        :param Database db: an instance of the database.py class
-        :param str ol_dump_parsed: path to the parsed Open Library Editions dump
+        Because uncompressed dump is so large, the script parallel processes the files
+        in chunks of {size} bytes. For each chunk, it's read from the disk, parsed, and
+        added to the database.
+
+        :param Database db: the database connection to use.
+        :param str filename: path to the unparsed Open Library editions dump.
         """
-        # Create the OL table.
+        # Get the chunks on which to operate.
+        chunks = make_chunk_ranges(filename, size)
+        # Set the number of parallel processes to cpu_count - 1.
+        num_parallel = mp.cpu_count() - 1
+
+        # Create the ol table.
         try:
             db.execute(
                 "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
                 ol_ocaid TEXT, has_multiple_works INTEGER, \
                 has_ia_source_record INTEGER)"
             )
-            # Indexing massively increases performance. TODO: Index other keys?
-            db.execute("CREATE INDEX ol_idx ON ol(ol_edition_id)")
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
             sys.exit(1)
 
-        # Populate the DB with IA physical direct dump data.
-        with open(ol_dump_parsed, newline="") as file:
-            reader = csv.reader(file, delimiter="\t")
-            for row in reader:
-                # TODO: Is this 'better' than try/except?
-                if len(row) < 4:
-                    continue
+        # Clean up previous chunks lying around with the same
+        # OL_EDITIONS_DUMP_PARSED base.
+        path = Path(OL_EDITIONS_DUMP_PARSED)
+        files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+        for f in files:
+            f.unlink()
 
-                # Get the IDs, though some are empty strings.
-                # Format: id<tab>ia_id<tab>ia_ol_edition<tab>ia_ol_work
-                (
-                    ol_edition_id,
-                    ol_work_id,
-                    ol_ocaid,
-                    has_multiple_works,
-                    has_ia_source_record,
-                ) = (
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                )
+        # For each Open Library chunk, read, process, and write it.
+        print("Processing Open Library editions dump and writing to disk.")
+        total = len(chunks)
+        with mp.Pool(num_parallel) as pool, tqdm(total=total) as pbar:
+            result = pool.imap_unordered(write_chunk_to_disk, chunks)
+            for _ in result:
+                pbar.update(1)
 
-                # TODO: Is there any point to setting values to Null rather
-                # than None in the DB?
-                db.execute(
-                    "INSERT INTO ol VALUES (?, ?, ?, ?, ?)",
-                    (
-                        nuller(ol_edition_id),
-                        nuller(ol_work_id),
-                        nuller(ol_ocaid),
-                        int(has_multiple_works),
-                        int(has_ia_source_record),
-                    ),
-                )
+        # For each Open Library chunk, read it, process it, and INSERT it into the ol
+        # table.
+        print("Inserting the Open Library editions data.")
+        print("This may take a while. Go get some runts.")
+        insert_ol_data_in_ol_table(db)
+
+        # Create the index after INSERT for performance gain.
+        db.execute("CREATE INDEX ol_idx ON ol(ol_edition_id)")
+
+        # For each Open Library chunk, read it, process it, and UPDATE the ia table.
+        print("Now updating the Internet Archive table with Open Library data.")
+        print("This shouldn't take as long.")
+        update_ia_editions_from_parsed_tsvs(db)
+
         db.commit()
-
-    def parse_ol_dump_and_write_ids(
-        self, in_file: str = OL_EDITIONS_DUMP, out_file: str = OL_EDITIONS_DUMP_PARSED
-    ) -> None:
-        """
-        Parse an Open Library editions dump from
-        https://openlibrary.org/developers/dumps and write the output to a .tsv in
-        the format:
-        ol_edition_id\tol_work_id\tol_ocaid\thas_multiple_works\thas_ia_source_record
-
-        :param str in_file: path to the unparsed Open Library editions dump.
-        :param str out_file: path where the parsed Open Library editions dump will go.
-        """
-        # Fix for: _csv.Error: field larger than field limit (131072)
-        csv.field_size_limit(sys.maxsize)
-        # For each row in the Open Library editions dump, get the edition ID
-        # and the associated JSON, and from the JSON extract the ocaid record
-        # and the work ID.
-        with open(out_file, "w") as outfile, open(in_file) as infile:
-            writer = csv.writer(outfile, delimiter="\t")
-            reader = csv.reader(infile, delimiter="\t")
-
-            for row in reader:
-                # Skip if no JSON.
-                if len(row) < 5:
-                    continue
-                # Annotate some variables to make this a bit cleaner. Maybe
-                d: dict[str, Any]
-                ol_edition_id: str
-                ol_ocaid: str
-                ol_work_id: list[dict[str, str]] = []
-                has_multiple_works: int = 0  # No boolean in SQLite
-                has_ia_source_record: int = 0
-
-                # Parse the JSON
-                d = orjson.loads(row[4])
-                # TODO: Check how these empty strings are being stored in the database
-                # (e.g. None, "", Null, or what)
-                ol_ocaid = d.get("ocaid", "")
-                ol_edition_id = d.get("key", "").split("/")[-1]
-
-                if work_id := d.get("works"):
-                    ol_work_id = work_id[0].get("key").split("/")[-1]
-                    has_multiple_works = int(len(work_id) > 1)
-
-                if (source_records := d.get("source_records")) and isinstance(
-                    source_records, list
-                ):
-                    # Check if each record has an "ia:" in it. If any does, return True
-                    # and convert to 1 for SQLite, and 0 otherwise.
-                    has_ia_source_record = int(
-                        any(
-                            [
-                                "ia" in record
-                                for record in source_records
-                                if record is not None
-                            ]
-                        )
-                    )
-
-                writer.writerow(
-                    [
-                        ol_edition_id,
-                        ol_work_id,
-                        ol_ocaid,
-                        has_multiple_works,
-                        has_ia_source_record,
-                    ]
-                )
 
     def create_db(self, db: Database) -> None:
         """
-        Create the tables and insert the data. NOTE: You must parse the data first.
+        Create the tables and insert the data. NOTE: You must fetch the data first.
 
         :param Database db: an instance of the database.py class.
         """
-        print("Creating (and inserting) the Internet Archive table")
         self.create_ia_table(db)
-        print("Creating (and inserting) the Open Library table")
         self.create_ol_table(db)
-        print("Updating the Internet Archive table with Open Library data")
-        self.insert_ol_data_from_tsv(db)
-
-    def insert_ol_data_from_tsv(
-        self, db: Database, parsed_ol_data: str = OL_EDITIONS_DUMP_PARSED
-    ) -> None:
-        """
-        Add the OL data from parse_ol_dump_and_write_ids() by collating it with
-        the already inserted IA data. Specifically, for each row in the parsed
-        OL .tsv, find that row's ia_id within the database, and then within the
-        database update that database row to include the ol_id as noted within
-        the OL tsv that we're reading.
-
-        :param Database db: an instance of the database.py class.
-        :param str parsed_ol_data: path to the parsed Open Library Editions file.
-        """
-        # TODO: Try an IA table and an OL table and see how fast this is doing
-        # queries with an inner join. Answer: the queries are slower with the join.
-
-        def collection() -> Iterator[tuple[str, str]]:
-            with open(parsed_ol_data) as file:
-                reader = csv.reader(file, delimiter="\t")
-                for row in reader:
-                    ol_id, ol_ocaid = row[0], row[2]
-
-                    if ol_id and ol_ocaid:
-                        yield (ol_id, ol_ocaid)
-
-        db.executemany("UPDATE ia SET ol_edition_id = ? WHERE ia_id = ?", collection())
-        db.commit()
 
     def process_result(self, result: list[Any], out_file: str, message: str) -> None:
         """
@@ -424,6 +323,10 @@ class Reconciler:
 
 
 if __name__ == "__main__":
+    # Create necessary paths
+    paths = [FILES_DIR, REPORTS_DIR]
+    [path_check(d) for d in paths]
+
     reconciler = Reconciler()
     db = Database(SQLITE_DB)
     # Some functions to work around passing arguments to Fire.
@@ -431,20 +334,20 @@ if __name__ == "__main__":
 
     def create_db():
         """
-        Create the tables and insert the data. NOTE: You must parse the data first.
+        Parse the data, create the tables, and insert the data. NOTE: you must fetch the
+        data first.
         """
         reconciler.create_db(db)
 
     def all_reports():
         """
-        Just run all the reports because these commands are way too long to type.
+        Just run all the reports because typing them individually too long.
         """
         reconciler.all_reports(db)
 
     fire.Fire(
         {
             "fetch-data": get_and_extract_data,
-            "parse-data": reconciler.parse_ol_dump_and_write_ids,
             "create-db": create_db,
             "all-reports": all_reports,
         }
