@@ -63,7 +63,7 @@ def cleanup():
     multiprocessing.pool.imap_unordered() needs to serialize its arguments, and passing
     a database connection led to serialization issues. Because each connection to an
     SQLite :memory: database is a unique DB, and because of difficult passing arguments
-    through imap_unordered(), this is a way to use enviroment variables for the
+    through imap_unordered(), this is a way to use environment variables for the
     database, for everythting to use the same database, and for there to be some
     clean-up.
     """
@@ -196,22 +196,24 @@ def test_write_chunk_to_disk() -> None:
 
     # The written files have random hex strings, so use globbing to get the filenames
     # to search the chunk. Note: the search term must be contained with what would be
-    # within thte first chunk, as this is just writing one chunk. Something too far
+    # within the first chunk, as this is just writing one chunk. Something too far
     # down the unparsed file won't be in the first chunk.
     path = Path(OL_EDITIONS_DUMP_PARSED)
     files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
 
-    def find_edition(files):
-        for file in files:
-            print(f"Searching: {file}")
-            if (
-                "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
-                in file.read_text()
-            ):
-                return True
-        return False
+    edition = "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
+    assert any(edition in file.read_text() for file in files) is True
 
-    assert find_edition(files) is True
+    # def find_edition(files):
+    #     for file in files:
+    #         if (
+    #             "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
+    #             in file.read_text()
+    #         ):
+    #             return True
+    #     return False
+
+    # assert find_edition(files) is True
 
 
 ###########
@@ -359,7 +361,7 @@ def test_all_reports(setup_db) -> None:
         report.unlink()
 
     reconciler.all_reports(db)
-    report_count = 0
+    report_count = 0  # noqa SIM113
     reports = Path(FILES_DIR).glob("report_*")
     for report in reports:
         report.unlink()

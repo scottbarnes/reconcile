@@ -44,7 +44,7 @@ def download_file(urls: list[str]) -> str:
             result = response.headers.get("Content-Length")
             total_length = int(result) if result else 0
 
-            with tqdm.wrapattr(
+            with tqdm.wrapattr(  # noqa SIM117
                 response.raw, "read", total=total_length, desc=""
             ) as raw:
 

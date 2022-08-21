@@ -281,7 +281,7 @@ def update_ia_editions_from_parsed_tsvs(
 #     :param chunk tuple: Chunk to insert.
 #     """
 #     # The DB isn't (can't?) be passed as an argument because of issues with pickling
-#     # andthe map function in multiprocessing.pool.
+#     # and the map function in multiprocessing.pool.
 #     db = Database(SQLITE_DB)
 
 #     def get_ol_ids_with_ol_ocaid(data) -> Iterable[tuple[str, str]]:
