@@ -78,9 +78,15 @@ class Reconciler:
             )
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
+            print(f"You may need to delete {SQLITE_DB}.")
             sys.exit(1)
 
         # Populate the DB with IA physical direct dump data.
+        path = Path(ia_dump)
+        if not path.is_file():
+            print(f"Cannot find {ia_dump}.")
+            print("Either `fetch-data` or check `ia_physical_direct_dump` in setup.cfg")
+            sys.exit(1)
         total = bufcount(ia_dump)
         print("Inserting the Internet Archive records.")
         with open(ia_dump, newline="") as file, tqdm(total=total) as pbar:
@@ -130,6 +136,20 @@ class Reconciler:
         :param Database db: the database connection to use.
         :param str filename: path to the unparsed Open Library editions dump.
         """
+        # Ensure the input file exists.
+        in_path = Path(OL_EDITIONS_DUMP)
+        if not in_path.is_file():
+            print(f"Cannot find {OL_EDITIONS_DUMP}.")
+            print("Either `fetch-data` or check `ol_editions_dump` in setup.cfg")
+            sys.exit(1)
+
+        # Clean up any previously written chunks lying around with the same
+        # OL_EDITIONS_DUMP_PARSED base.
+        out_path = Path(OL_EDITIONS_DUMP_PARSED)
+        files = Path(FILES_DIR).glob(f"{out_path.stem}*{out_path.suffix}")
+        for f in files:
+            f.unlink()
+
         # Get the chunks on which to operate.
         chunks = make_chunk_ranges(filename, size)
         # Set the number of parallel processes to cpu_count - 1.
@@ -144,17 +164,12 @@ class Reconciler:
             )
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
+            print(f"You may need to delete {SQLITE_DB}.")
             sys.exit(1)
-
-        # Clean up previous chunks lying around with the same
-        # OL_EDITIONS_DUMP_PARSED base.
-        path = Path(OL_EDITIONS_DUMP_PARSED)
-        files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
-        for f in files:
-            f.unlink()
 
         # For each Open Library chunk, read, process, and write it.
         print("Processing Open Library editions dump and writing to disk.")
+        print("Note: this progress bar is a little lumpy because of multiprocessing.")
         total = len(chunks)
         with mp.Pool(num_parallel) as pool, tqdm(total=total) as pbar:
             result = pool.imap_unordered(write_chunk_to_disk, chunks)
@@ -164,7 +179,6 @@ class Reconciler:
         # For each Open Library chunk, read it, process it, and INSERT it into the ol
         # table.
         print("Inserting the Open Library editions data.")
-        print("This may take a while. Go get some runts.")
         insert_ol_data_in_ol_table(db)
 
         # Create the index after INSERT for performance gain.
@@ -309,17 +323,23 @@ class Reconciler:
 
         :param Database db: an instance of the database.py class.
         """
-        self.query_ol_id_differences(db)
-        print("\n")
-        self.get_editions_with_multiple_works(db)
-        print("\n")
-        self.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
-        print("\n")
-        self.get_ol_edition_has_ocaid_but_no_ia_source_record(db)
-        print("\nThe next queries use joins and are slower.\n")
-        self.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
-        print("\n")
-        self.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
+        try:
+            self.query_ol_id_differences(db)
+            print("\n")
+            self.get_editions_with_multiple_works(db)
+            print("\n")
+            self.get_ol_has_ocaid_but_ia_has_no_ol_edition(db)
+            print("\n")
+            self.get_ol_edition_has_ocaid_but_no_ia_source_record(db)
+            print("\nThe next queries use joins and are slower.\n")
+            self.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
+            print("\n")
+            self.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
+        except sqlite3.OperationalError as err:
+            print(f"SQLite error: {err}")
+            if "no such table" in err.args[0]:
+                print("Perhaps you need to run with `create-db` first.")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

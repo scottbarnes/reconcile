@@ -181,4 +181,5 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
 
     ia_file_path = cwd + "/" + ia_file
     ol_file_path = cwd + "/" + ol_file
-    print(f"All done. Files downloaded to:\n{ia_file_path}\n{ol_file_path}")
+    print(f"\nAll done. Files downloaded to:\n{ia_file_path}\n{ol_file_path}\n")
+    print("Run with `create-db` to parse and insert the data into the database.")
