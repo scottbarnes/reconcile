@@ -15,7 +15,7 @@ from reconcile.openlibrary_editions import (
     read_and_convert_chunk,
     write_chunk_to_disk,
 )
-from reconcile.utils import bufcount, path_check
+from reconcile.utils import bufcount, get_bad_isbn_10s, get_bad_isbn_13s, path_check
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -245,6 +245,24 @@ def test_path_check() -> None:
     path_check("Sierra_Peaks_Section")
     assert path.is_dir() is True
     path.rmdir()
+
+
+def test_get_bad_isbn_10s() -> None:
+    """Verify bad ISBN 10s are found and accuraterly reported."""
+    isbn_10s = ["", "a", "083693133X", "1111111111", "0836931335", "9780735211308"]
+    assert (
+        get_bad_isbn_10s(isbn_10s=isbn_10s).sort()
+        == ["a", "083693133X", "9780735211308"].sort()
+    )
+
+
+def test_check_and_report_bad_isbns_13() -> None:
+    """Verify bad ISBN 13s are found and accuraterly reported."""
+    isbn_13s = ["a", "0836931335", "1111111111111", "9780735211308"]
+    assert (
+        get_bad_isbn_13s(isbn_13s=isbn_13s).sort()
+        == ["a", "0836931335", "1111111111111"].sort()
+    )
 
 
 def test_create_ia_table_exits_if_db_exists(setup_db: Database) -> None:

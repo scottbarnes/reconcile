@@ -1,7 +1,10 @@
 import csv
 import sys
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+
+from isbnlib import canonical, is_isbn10, is_isbn13
 
 # Various utility functions.
 
@@ -73,3 +76,53 @@ def record_errors(err: list | str, filename: str) -> None:
     """
     with Path(filename).open(mode="a") as fp:
         fp.writelines(f"{datetime.now()}: {err}\n")
+
+
+def get_bad_isbn_10s(isbn_10s: Iterable) -> list[str]:
+    """
+    Iterates thtrough {isbn_10s} and returns a list of invalid ISBNs.
+    """
+    # Store our invalid ISBNs.
+    invalid_isbns = []
+
+    # Look for invalid ISBN 10s.
+    isbns = set(isbn_10s)
+    canonical_10s = {canonical(isbn) for isbn in isbns}
+
+    # First check if canonical() returns fewer ISBNs, meaning 1+ are invalid because
+    # of bad form.
+    if invalid := (isbns - set(canonical_10s)):
+        for isbn in invalid:
+            invalid_isbns.append(isbn)
+
+    # Then check the ISBNs with formal validity.
+    for isbn in canonical_10s:
+        if not is_isbn10(isbn) and isbn != "":
+            invalid_isbns.append(isbn)
+
+    return invalid_isbns
+
+
+def get_bad_isbn_13s(isbn_13s: Iterable) -> list[str]:
+    """
+    Iterates thtrough {isbn_13s} and returns a list of invalid ISBNs.
+    """
+    # Store our invalid ISBNs.
+    invalid_isbns = []
+
+    # Look for invalid ISBN 13s.
+    isbns = set(isbn_13s)
+    canonical_13s = {canonical(isbn) for isbn in isbns}
+
+    # First check if canonical() returns fewer ISBNs, meaning 1+ are invalid because
+    # of bad form.
+    if invalid := (isbns - set(canonical_13s)):
+        for isbn in invalid:
+            invalid_isbns.append(isbn)
+
+    # Then check the ISBNs with formal validity.
+    for isbn in canonical_13s:
+        if not is_isbn13(isbn) and isbn != "":
+            invalid_isbns.append(isbn)
+
+    return invalid_isbns

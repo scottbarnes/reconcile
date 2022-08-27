@@ -28,6 +28,8 @@ one can remove SQLite db in `files/reconcile.db` and try the import again.
 There isn't much configuration, but if you want to store the files in somewhere other
 than /path/to/reconcile/files, take a look at the values under [reconcile] in `setup.cfg`.
 
+Similarly, if you wish to enable data scrubbing, set `scrub_data = True` in `setup.cfg`. Currently this only scrubs (validates) ISBNs, writing bad ISBNs to `./reports/report_bad_isbns.txt`. On my computer this option is fairly expensive and adds about five minutes.
+
 ### Running reconcile
 Whether you `poetry run python reconcile/main.py` or run `poetry shell` and then `python reconcile/main.py`, either way, you should see something similar to:
 ```

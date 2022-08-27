@@ -14,7 +14,7 @@ from typing import Any
 import orjson
 from database import Database
 from tqdm import tqdm
-from utils import bufcount, nuller, record_errors
+from utils import bufcount, get_bad_isbn_10s, get_bad_isbn_13s, nuller, record_errors
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -25,6 +25,8 @@ OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
 OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
+REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
+SCRUB_DATA = config.get(CONF_SECTION, "scrub_data")
 
 
 db = Database(SQLITE_DB)
@@ -53,6 +55,8 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
 
     ol_ocaid = d.get("ocaid", None)
     ol_edition_id = d.get("key", "").split("/")[-1]
+    isbn_10s: list[str] = d.get("isbn_10", None)
+    isbn_13s: list[str] = d.get("isbn_13", None)
 
     if work_id := d.get("works"):
         ol_work_id = work_id[0].get("key", "").split("/")[-1]
@@ -64,6 +68,19 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
         has_ia_source_record = int(
             any(["ia" in record for record in source_records if record is not None])
         )
+
+    # Check and report bad ISBNs.
+    # Set `scrub_data = True` in setup.cfg to enable this. This adds 3-5 minutes to the
+    # processing.
+    if SCRUB_DATA:
+        bad_isbn10s = get_bad_isbn_10s(isbn_10s) if isbn_10s else isbn_10s
+        bad_isbn13s = get_bad_isbn_13s(isbn_13s) if isbn_13s else isbn_13s
+
+        if bad_isbn10s or bad_isbn13s:
+            record_errors(
+                f"Invalid ISBNs for {ol_edition_id}: {bad_isbn10s} {bad_isbn13s}",
+                REPORT_BAD_ISBNS,
+            )
 
     return (
         nuller(ol_edition_id),
