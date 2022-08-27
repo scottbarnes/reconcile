@@ -26,10 +26,25 @@ OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
-SCRUB_DATA = config.get(CONF_SECTION, "scrub_data")
+SCRUB_DATA = config.getboolean(CONF_SECTION, "scrub_data")
 
 
 db = Database(SQLITE_DB)
+
+
+def pre_create_ol_table_file_cleanup() -> None:
+    """Clean up stale files."""
+    # OL_EDITIONS_DUMP_PARSED base.
+    out_path = Path(OL_EDITIONS_DUMP_PARSED)
+    files = Path(FILES_DIR).glob(f"{out_path.stem}*{out_path.suffix}")
+    for f in files:
+        f.unlink()
+
+    # Clean up stale data scrubbing reports, if scrub_data = True.
+    if SCRUB_DATA:
+        p = Path(REPORT_BAD_ISBNS)
+        if p.is_file():
+            p.unlink()
 
 
 def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, int, int]:
@@ -73,9 +88,9 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
     # Set `scrub_data = True` in setup.cfg to enable this. This adds 3-5 minutes to the
     # processing.
     if SCRUB_DATA:
+        # Get any bad ISBNs and report them.
         bad_isbn10s = get_bad_isbn_10s(isbn_10s) if isbn_10s else isbn_10s
         bad_isbn13s = get_bad_isbn_13s(isbn_13s) if isbn_13s else isbn_13s
-
         if bad_isbn10s or bad_isbn13s:
             record_errors(
                 f"Invalid ISBNs for {ol_edition_id}: {bad_isbn10s} {bad_isbn13s}",

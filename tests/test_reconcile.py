@@ -15,7 +15,13 @@ from reconcile.openlibrary_editions import (
     read_and_convert_chunk,
     write_chunk_to_disk,
 )
-from reconcile.utils import bufcount, get_bad_isbn_10s, get_bad_isbn_13s, path_check
+from reconcile.utils import (
+    bufcount,
+    get_bad_isbn_10s,
+    get_bad_isbn_13s,
+    path_check,
+    record_errors,
+)
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -28,6 +34,7 @@ OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
 OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
+REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
 REPORT_OL_IA_BACKLINKS = config.get(CONF_SECTION, "report_ol_ia_backlinks")
 REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = config.get(
     CONF_SECTION, "report_ol_has_ocaid_ia_has_no_ol_edition"
@@ -166,6 +173,23 @@ def test_process_line() -> None:
     assert process_line(no_work) == ("OL10000149M", None, None, 0, 0)
 
 
+def test_process_line_and_validate_isbn() -> None:
+    p = Path(REPORT_BAD_ISBNS)
+    if p.is_file():
+        p.unlink()
+
+    edition = [
+        "/type/edition",
+        "/books/OL10000149M",
+        "2",
+        "2010-03-11T23:51:36.723486",
+        r"""{"isbn_13": ["9780107805548", "XYZ", ""], "isbn_10": ["0107805545", "X111111111"]}""",  # noqa E501
+    ]
+    process_line(edition)
+    assert "XYZ" in p.read_text()
+    assert "X111111111" in p.read_text()
+
+
 def test_make_chunk_ranges() -> None:
     """Make sure chunk ranges create properly."""
     assert make_chunk_ranges(OL_EDITIONS_DUMP, 10_000) == [
@@ -204,16 +228,10 @@ def test_write_chunk_to_disk() -> None:
     edition = "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
     assert any(edition in file.read_text() for file in files) is True
 
-    # def find_edition(files):
-    #     for file in files:
-    #         if (
-    #             "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
-    #             in file.read_text()
-    #         ):
-    #             return True
-    #     return False
 
-    # assert find_edition(files) is True
+################
+# Data scrubbing
+################
 
 
 ###########
@@ -263,6 +281,15 @@ def test_check_and_report_bad_isbns_13() -> None:
         get_bad_isbn_13s(isbn_13s=isbn_13s).sort()
         == ["a", "0836931335", "1111111111111"].sort()
     )
+
+
+def test_record_errors() -> None:
+    """Verify errors are written to disk"""
+    filename = "record_error_test.txt"
+    p = Path(filename)
+    record_errors("some test error", filename)
+    assert "some test error" in p.read_text()
+    p.unlink()
 
 
 def test_create_ia_table_exits_if_db_exists(setup_db: Database) -> None:

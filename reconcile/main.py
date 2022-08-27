@@ -12,6 +12,7 @@ from fetch import get_and_extract_data
 from openlibrary_editions import (
     insert_ol_data_in_ol_table,
     make_chunk_ranges,
+    pre_create_ol_table_file_cleanup,
     update_ia_editions_from_parsed_tsvs,
     write_chunk_to_disk,
 )
@@ -122,7 +123,7 @@ class Reconciler:
         self,
         db: Database,
         filename: str = OL_EDITIONS_DUMP,
-        size: int = 1024 * 1024 * 1024,
+        size: int = 256 * 512 * 512,
     ):
         """
         Parse the (uncompressed) Open Library editions dump named {filename} and insert
@@ -143,12 +144,8 @@ class Reconciler:
             print("Either `fetch-data` or check `ol_editions_dump` in setup.cfg")
             sys.exit(1)
 
-        # Clean up any previously written chunks lying around with the same
-        # OL_EDITIONS_DUMP_PARSED base.
-        out_path = Path(OL_EDITIONS_DUMP_PARSED)
-        files = Path(FILES_DIR).glob(f"{out_path.stem}*{out_path.suffix}")
-        for f in files:
-            f.unlink()
+        # Clean up output from prior runs.
+        pre_create_ol_table_file_cleanup()
 
         # Get the chunks on which to operate.
         chunks = make_chunk_ranges(filename, size)
