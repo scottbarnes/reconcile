@@ -146,3 +146,25 @@ class Database:
             (ol.ol_ocaid IS NOT NULL) AND (ol.has_ia_source_record is 0)
         """
         return self.query(sql)
+
+    def get_work_ids_associated_with_different_ol_works(self) -> list[Any]:
+        """
+        Get Internet Archive OCAIDs (and Open Library Work IDs), where different Open
+        Library Work IDs link to the same OCAID.
+        NOTE: This report largely seems to find works where one is a redirect to the
+        other. Better to use the Works dump?
+        """
+        sql = """
+        SELECT
+            ol.ol_ocaid,
+            ol.ol_edition_id,
+            ol.ol_work_id,
+            ia.ia_ol_edition_id,
+            ia.ia_ol_work_id
+        FROM
+            ia INNER JOIN ol
+            ON ia.ia_id = ol.ol_ocaid
+        WHERE
+            ia.ia_ol_work_id IS NOT ol.ol_work_id
+        """
+        return self.query(sql)
