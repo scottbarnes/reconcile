@@ -51,6 +51,9 @@ REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = config.get(
 REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
     CONF_SECTION, "report_ol_edition_has_ocaid_but_no_source_record"
 )
+REPORT_IA_WITH_SAME_OL_EDITION = config.get(
+    CONF_SECTION, "report_get_ia_with_same_ol_edition"
+)
 
 reconciler = Reconciler()
 
@@ -397,6 +400,17 @@ def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) ->
     assert file.read_text() == "guidetojohnmuirt0000star\tOL5756837M\n"
 
 
+def test_get_ia_with_same_ol_edition(setup_db: Database) -> None:
+    """
+    Verify that Archive.org items with the same Open Library edition are reported.
+    """
+    db = setup_db
+    reconciler.get_ia_with_same_ol_edition_id(db, REPORT_IA_WITH_SAME_OL_EDITION)
+    file = Path(REPORT_IA_WITH_SAME_OL_EDITION)
+    assert file.is_file() is True
+    assert file.read_text() == "blobbook\tOL0000001M\ndifferentbook\tOL0000001M\n"
+
+
 def test_all_reports(setup_db) -> None:
     """This just cleans up and verifies reconciler.all_reports() is facially working."""
     db = setup_db
@@ -412,7 +426,7 @@ def test_all_reports(setup_db) -> None:
         report.unlink()
         report_count += 1
 
-    assert report_count == 6
+    assert report_count == 7
 
 
 ##################

@@ -46,6 +46,9 @@ REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = config.get(
 REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
     CONF_SECTION, "report_ol_edition_has_ocaid_but_no_source_record"
 )
+REPORT_IA_WITH_SAME_OL_EDITION = config.get(
+    CONF_SECTION, "report_get_ia_with_same_ol_edition"
+)
 
 
 class Reconciler:
@@ -263,7 +266,7 @@ class Reconciler:
         :param str out_file: path to the report output.
         """
         # Get the results, count them, and write the results to a TSV.
-        message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition (JOINS)"  # noqa E501
+        message = "Total Internet Archive records where an Open Library Edition has an OCAID but Internet Archive has no Open Library Edition"  # noqa E501
         result = db.get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition_join()
         self.process_result(result, out_file, message)
 
@@ -314,6 +317,23 @@ class Reconciler:
         result = db.get_ol_edition_has_ocaid_but_no_ia_source_record()
         self.process_result(result, out_file, message)
 
+    def get_ia_with_same_ol_edition_id(
+        self, db: Database, out_file: str = REPORT_IA_WITH_SAME_OL_EDITION
+    ) -> None:
+        """
+        Get (Internet Archive OCAID, Open Library Edition ID) pairings where the Open
+        Library edition ID is associated with more than one Internet Archive OCAID.
+
+        NOTE: Many of these duplicates are because the Internet Archive dump includes
+        the same OCAID with many different ISBNs, and in doing so it links, usually, to
+        the same Open Library edition ID.
+        """
+        message = (
+            "Total Archive.org items with the same Open Library edition ID"  # noqa E501
+        )
+        result = db.get_ia_id_with_same_ol_edition_id()
+        self.process_result(result, out_file, message)
+
     def all_reports(self, db: Database) -> None:
         """
         Just run all the reports because these commands are way too long to type.
@@ -332,6 +352,8 @@ class Reconciler:
             self.get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
             print("\n")
             self.get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
+            print("\n")
+            self.get_ia_with_same_ol_edition_id(db)
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
             if "no such table" in err.args[0]:

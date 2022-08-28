@@ -73,15 +73,24 @@ class Database:
         with an OCAID, and with the OLID that Internet Archive associates with an
         ocaid.
         """
-        sql = """SELECT * FROM ia WHERE (ia_ol_edition_id IS NOT ol_edition_id)
-            AND (ol_edition_id IS NOT NULL AND ia_ol_edition_id IS NOT NULL)"""
+        sql = """
+        SELECT *
+        FROM   ia
+        WHERE  ia_ol_edition_id IS NOT ol_edition_id
+        AND    ol_edition_id IS NOT NULL
+        AND    ia_ol_edition_id IS NOT NULL
+        """
         return self.query(sql)
 
     def get_editions_with_multiple_works(self) -> list[Any]:
         """
         Get records where an Open Library Edition has more than one associated Work.
         """
-        sql = """SELECT ol_edition_id FROM ol WHERE has_multiple_works IS 1"""
+        sql = """
+        SELECT ol_edition_id
+        FROM   ol
+        WHERE  has_multiple_works IS 1
+        """
         return self.query(sql)
 
     def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition(
@@ -91,8 +100,13 @@ class Database:
         Get records where an Open Library edition has an OCAID but Internet
         Archive has no Open Library edition associated with that OCAID.
         """
-        sql = """SELECT ia_id, ol_edition_id FROM ia WHERE (ol_edition_id IS NOT
-            NULL) AND (ia_ol_edition_id IS NULL)"""
+        sql = """
+        SELECT ia_id,
+               ol_edition_id
+        FROM   ia
+        WHERE  ol_edition_id IS NOT NULL
+               AND ia_ol_edition_id IS NULL
+        """
         return self.query(sql)
 
     def get_ocaid_where_ol_edition_has_ocaid_and_ia_has_no_ol_edition_join(
@@ -103,14 +117,12 @@ class Database:
         using a database inner join.
         """
         sql = """
-        SELECT
-            ia.ia_id,
-            ol.ol_edition_id
-        FROM
-            ia INNER JOIN ol
-            ON ia.ia_id = ol.ol_ocaid
-        WHERE
-            ia.ia_ol_edition_id IS NULL
+        SELECT ia.ia_id,
+               ol.ol_edition_id
+        FROM   ia
+               INNER JOIN ol
+                       ON ia.ia_id = ol.ol_ocaid
+        WHERE  ia.ia_ol_edition_id IS NULL
         """
         return self.query(sql)
 
@@ -120,14 +132,12 @@ class Database:
         Open Library Edition has no OCAID.
         """
         sql = """
-        SELECT
-            ia.ia_id,
-            ia.ia_ol_edition_id
-        FROM
-            ia INNER JOIN ol
-            ON ia.ia_ol_edition_id = ol.ol_edition_id
-        WHERE
-            ol.ol_ocaid IS NULL
+        SELECT ia.ia_id,
+               ia.ia_ol_edition_id
+        FROM   ia
+               INNER JOIN ol
+                       ON ia.ia_ol_edition_id = ol.ol_edition_id
+        WHERE  ol.ol_ocaid IS NULL
         """
         return self.query(sql)
 
@@ -137,13 +147,11 @@ class Database:
         key has no 'ia:<ocaid>' value.
         """
         sql = """
-        SELECT
-            ol.ol_ocaid,
-            ol.ol_edition_id
-        FROM
-            ol
-        WHERE
-            (ol.ol_ocaid IS NOT NULL) AND (ol.has_ia_source_record is 0)
+        SELECT ol.ol_ocaid,
+               ol.ol_edition_id
+        FROM   ol
+        WHERE  ol.ol_ocaid IS NOT NULL
+        AND    ol.has_ia_source_record IS 0
         """
         return self.query(sql)
 
@@ -155,16 +163,38 @@ class Database:
         other. Better to use the Works dump?
         """
         sql = """
-        SELECT
-            ol.ol_ocaid,
-            ol.ol_edition_id,
-            ol.ol_work_id,
-            ia.ia_ol_edition_id,
-            ia.ia_ol_work_id
-        FROM
-            ia INNER JOIN ol
-            ON ia.ia_id = ol.ol_ocaid
-        WHERE
-            ia.ia_ol_work_id IS NOT ol.ol_work_id
+        SELECT     ol.ol_ocaid,
+                   ol.ol_edition_id,
+                   ol.ol_work_id,
+                   ia.ia_ol_edition_id,
+                   ia.ia_ol_work_id
+        FROM       ia
+        INNER JOIN ol
+        ON         ia.ia_id = ol.ol_ocaid
+        WHERE      ia.ia_ol_work_id IS NOT ol.ol_work_id
+        """
+        return self.query(sql)
+
+    def get_ia_id_with_same_ol_edition_id(self) -> list[Any]:
+        """
+        Get (Internet Archive OCAID, Open Library Edition ID) pairings where the Open
+        Library edition ID is associated with more than one Internet Archive OCAID.
+
+        NOTE: Many of these duplicates are because the Internet Archive dump includes
+        the same OCAID with many different ISBNs, and in doing so it links, usually, to
+        the same Open Library edition ID.
+        """
+        sql = """
+        SELECT a.ia_id,
+               a.ia_ol_edition_id
+        FROM   ia AS a
+               JOIN (SELECT ia_id,
+                            ia_ol_edition_id,
+                            Count(*)
+                     FROM   ia
+                     GROUP  BY ia_ol_edition_id
+                     HAVING Count(*) > 1) AS b
+                 ON a.ia_ol_edition_id = b.ia_ol_edition_id
+        ORDER  BY a.ia_ol_edition_id
         """
         return self.query(sql)
