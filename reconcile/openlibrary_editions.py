@@ -7,7 +7,7 @@ import csv
 import mmap
 import sys
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -140,7 +140,7 @@ def make_chunk_ranges(file_name: str, size: int) -> list[tuple[int, int, str]]:
 
 def read_and_convert_chunk(
     chunk: tuple[int, int, str]
-) -> Iterable[tuple[str | None, str | None, str | None, int, int]]:
+) -> Iterator[tuple[str | None, str | None, str | None, int, int]]:
     """
     For {chunk}, get the byte range to read, read it, and process the lines therein.
     Chunk:
@@ -151,7 +151,7 @@ def read_and_convert_chunk(
     (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
 
     :param tuple chunk: The byte range of the file chunk, and the file to process.
-    :returns Iterable: Generator of tuples as shown above.
+    :returns Iterator: Generator of tuples as shown above.
     """
     start, end, file = chunk
     position = start
@@ -221,12 +221,13 @@ def insert_ol_data_in_ol_table(
     total = sum(lines)
     files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
 
-    def get_ol_rows():
+    def get_ol_rows() -> Iterator:
         """
-        From the OL data, find edition_id and ocaid pairs.
-        Format is:
-        edition_id, work_id, ocaid, has_multiple_works, has_ia_source_record
-        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi    0   1
+        Read the file, decode the lines, and yield them.
+        Format of decoded line:
+        edition_id, work_id, ocaid, has_multiple_works, has_ia_source_record,
+        resolved_work_id
+        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi    0   1  None
         """
         pbar = tqdm(total=total)
         for file in files:
@@ -240,11 +241,12 @@ def insert_ol_data_in_ol_table(
                     if len(row) != 5:
                         record_errors(row, REPORT_ERRORS)
                         continue
+                    row += ("",)  # Faster append of to-be-used columns.
                     yield row
 
     collection = get_ol_rows()
     db.execute("PRAGMA synchronous = OFF")
-    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?)", collection)
+    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?)", collection)
     db.commit()
 
 
@@ -316,7 +318,7 @@ def update_ia_editions_from_parsed_tsvs(
 #     # and the map function in multiprocessing.pool.
 #     db = Database(SQLITE_DB)
 
-#     def get_ol_ids_with_ol_ocaid(data) -> Iterable[tuple[str, str]]:
+#     def get_ol_ids_with_ol_ocaid(data) -> Iterator[tuple[str, str]]:
 #         """Find ol_id and ol_ocaid pairs to UPDATE ia table."""
 #         for row in data:
 #             ol_id, _, ol_ocaid, _, _ = row
