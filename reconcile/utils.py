@@ -1,7 +1,8 @@
 import csv
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
 
 from isbnlib import is_isbn10, is_isbn13
@@ -90,3 +91,12 @@ def get_bad_isbn_13s(isbn_13s: Iterable) -> list[str]:
     Iterates thtrough canonical {isbn_13s} and returns a list of invalid ISBNs.
     """
     return [isbn for isbn in isbn_13s if not is_isbn13(isbn)]
+
+
+def batcher(iterator: Iterator, batch_size: int) -> Iterator[tuple]:
+    """
+    Take an iterator and return an iterator returns (terminology?) list of
+    {batch_size} on __next__.
+    """
+    while batch := tuple(islice(iterator, batch_size)):
+        yield batch

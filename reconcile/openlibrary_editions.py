@@ -241,12 +241,15 @@ def insert_ol_data_in_ol_table(
                     if len(row) != 5:
                         record_errors(row, REPORT_ERRORS)
                         continue
-                    row += ("",)  # Faster append of to-be-used columns.
+                    row += (
+                        "",
+                        "",
+                    )  # Faster append of to-be-used columns.
                     yield row
 
     collection = get_ol_rows()
     db.execute("PRAGMA synchronous = OFF")
-    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?)", collection)
+    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?, ?)", collection)
     db.commit()
 
 

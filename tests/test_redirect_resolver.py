@@ -6,7 +6,7 @@ import pytest
 from lmdbm import Lmdb
 
 from reconcile.redirect_resolver import (
-    add_redirects_to_db,
+    create_redirects_db,
     process_redirect_line,
     read_file_linearly,
 )
@@ -35,17 +35,17 @@ def setup_db(tmp_path_factory) -> Iterator:
     """
     Set up a database to use for the session.
     """
-    d = tmp_path_factory.mktemp("data") / "test.db"
+    r = tmp_path_factory.mktemp("data") / "resolver.db"
+    m = tmp_path_factory.mktemp("data") / "edition_to_work_mapper.db"
     # db = SqliteDict(d)
-    with Lmdb.open(str(d), "c") as db:
-        yield db
+    with Lmdb.open(str(r), "c") as resolve_db, Lmdb.open(str(m), "c") as map_db:
+        yield (resolve_db, map_db)
 
 
 def test_can_insert_and_get_item_from_db(setup_db) -> None:
-    db = setup_db
-    db[b"Mount Whitney"] = b"Usually crowded"
-    # db.commit()
-    assert db.get(b"Mount Whitney") == b"Usually crowded"
+    resolve_db, _ = setup_db
+    resolve_db[b"Mount Whitney"] = b"Usually crowded"
+    assert resolve_db.get(b"Mount Whitney") == b"Usually crowded"
 
 
 def test_can_get_edition_redirect_key_and_value() -> None:
@@ -64,8 +64,8 @@ def test_add_and_retrieve_items_from_db(setup_db) -> None:
     Get an edition and a work redirect. And ensure non-redirects don't end up in
     the redirect store.
     """
-    db = setup_db
-    add_redirects_to_db(db, OL_ALL_DUMP)
-    assert db.get("OL002M") == b"OL003M"
-    assert db.get("OL003M") is None
-    assert db.get("OL002W") == b"OL003W"
+    resolve_db, _ = setup_db
+    create_redirects_db(resolve_db, OL_ALL_DUMP)
+    assert resolve_db.get("OL002M") == b"OL003M"
+    assert resolve_db.get("OL003M") is None
+    assert resolve_db.get("OL002W") == b"OL003W"

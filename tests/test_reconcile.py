@@ -127,7 +127,7 @@ def test_create_db_inserts_data() -> None:
 
     db.execute("""SELECT * FROM ol WHERE ol_edition_id = 'OL1002158M'""")
     assert db.fetchall() == [
-        ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1, 1, "")
+        ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1, 1, "", "")
     ]
 
 
@@ -323,7 +323,7 @@ def test_query_ol_id_differences(setup_db: Database):
     assert file.is_file() is True
     assert (
         file.read_text()
-        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\n"  # noqa E501
+        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\t\nol_to_ia_to_ol_backlink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\t\t\n"  # noqa E501
     )
 
 

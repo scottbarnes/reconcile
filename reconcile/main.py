@@ -17,8 +17,13 @@ from openlibrary_editions import (
     update_ia_editions_from_parsed_tsvs,
     write_chunk_to_disk,
 )
-from openlibrary_works import copy_db_column, update_redirected_ids
-from redirect_resolver import add_redirects_to_db
+from openlibrary_works import (
+    build_ia_ol_edition_to_ol_work_column,
+    copy_db_column,
+    create_resolved_edition_work_mapping,
+    update_redirected_ids,
+)
+from redirect_resolver import create_redirects_db
 from tqdm import tqdm
 from utils import bufcount, nuller, path_check, query_output_writer
 
@@ -34,6 +39,7 @@ OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REDIRECT_DB = config.get(CONF_SECTION, "redirect_db")
+MAPPING_DB = config.get(CONF_SECTION, "mapping_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_OL_IA_BACKLINKS = config.get(CONF_SECTION, "report_ol_ia_backlinks")
 REPORT_OL_HAS_OCAID_IA_HAS_NO_OL_EDITION = config.get(
@@ -84,7 +90,7 @@ class Reconciler:
             db.execute(
                 "CREATE TABLE ia (ia_id TEXT, ia_ol_edition_id TEXT, \
                  ia_ol_work_id TEXT, ol_edition_id TEXT, \
-                 resolved_ia_ol_work_id TEXT)"
+                 resolved_ia_ol_work_id TEXT, resolved_ia_ol_work_from_edition TEXT)"
             )
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
@@ -113,11 +119,12 @@ class Reconciler:
                 # TODO: Is there any point to setting values to Null rather
                 # than None in the DB?
                 db.execute(
-                    "INSERT INTO ia VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO ia VALUES (?, ?, ?, ?, ?, ?)",
                     (
                         nuller(ia_id),
                         nuller(ia_ol_edition_id),
                         nuller(ia_ol_work_id),
+                        None,
                         None,
                         None,
                     ),
@@ -168,7 +175,8 @@ class Reconciler:
             db.execute(
                 "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
                  ol_ocaid TEXT, has_multiple_works INTEGER, \
-                 has_ia_source_record INTEGER, resolved_ol_work_id TEXT)"
+                 has_ia_source_record INTEGER, resolved_ol_edition_id TEXT, \
+                 resolved_ol_work_id TEXT)"
             )
         except sqlite3.OperationalError as err:
             print(f"SQLite error: {err}")
@@ -377,7 +385,8 @@ if __name__ == "__main__":
 
     reconciler = Reconciler()
     db = Database(SQLITE_DB)
-    dict_db: Lmdb = Lmdb.open(REDIRECT_DB, "c")
+    redirect_db: Lmdb = Lmdb.open(REDIRECT_DB, "c")
+    map_db: Lmdb = Lmdb.open(MAPPING_DB, "c")
 
     # Some functions to work around passing arguments to Fire.
     # TODO: Do this the right way, because this is so ugly/embarrassing.
@@ -400,27 +409,37 @@ if __name__ == "__main__":
         Compile the redirects. Must refactor the command line portion. This is so
         embarrassing.
         """
-        # Comment out while testing.
-        # p = Path(REDIRECT_DB)
-        # if p.is_file():
-        #     print(f"Error: {REDIRECT_DB} already exists.")
-        #     sys.exit(1)
+        p = Path(REDIRECT_DB)
+        if p.is_file():
+            print(f"Error: {REDIRECT_DB} already exists.")
+            sys.exit(1)
 
-        # print("Creating a key-value store for the redirects.")
-        add_redirects_to_db(dict_db, OL_ALL_DUMP)
+        print("Creating a key-value store for the redirects.")
+        create_redirects_db(redirect_db, OL_ALL_DUMP)
 
         # Update the ia and ol db tables.
-        print("Copying the works tables to save time when resolving the redirects.")
+        print("Copying tables to save time when resolving the redirects.")
         copy_db_column(db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id")
         copy_db_column(db, "ol", "ol_work_id", "resolved_ol_work_id")
-
-        print("Resolving the redirects so there are consistent work_id references.")
-        update_redirected_ids(
-            db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id", dict_db
-        )
-        update_redirected_ids(db, "ol", "ol_work_id", "resolved_ol_work_id", dict_db)
-        # db.close()
+        copy_db_column(db, "ol", "ol_edition_id", "resolved_ol_edition_id")
         db.commit()
+
+        print("Resolving the redirects so there are consistent ID references.")
+        update_redirected_ids(
+            db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id", redirect_db
+        )
+        update_redirected_ids(
+            db, "ol", "ol_work_id", "resolved_ol_work_id", redirect_db
+        )
+        db.commit()
+
+        print("Creating the edition -> work mapping")
+        # TODO: needs status bar
+        create_resolved_edition_work_mapping(db, map_db)
+
+        print("Building the edition-> work table in ia")
+        # # TODO: needs status bar
+        build_ia_ol_edition_to_ol_work_column(db, redirect_db, map_db)
 
     fire.Fire(
         {

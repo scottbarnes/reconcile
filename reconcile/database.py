@@ -12,6 +12,7 @@ config.read("setup.cfg")
 CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
+SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 
 
 class Database:
@@ -20,7 +21,7 @@ class Database:
     Adapted from https://stackoverflow.com/a/38078544.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str = SQLITE_DB):
         # Create any necessary paths. This deserves a better fix.
         paths = [FILES_DIR, REPORTS_DIR]
         [path_check(d) for d in paths]

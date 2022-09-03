@@ -1,11 +1,10 @@
 import mmap
 from collections.abc import Iterator
-from itertools import islice
 
 import orjson
 from lmdbm import Lmdb
 from tqdm import tqdm
-from utils import bufcount
+from utils import batcher, bufcount
 
 """
 Functions to resolve redirects and put them in a key/value store.
@@ -54,31 +53,13 @@ def read_file_linearly(file: str) -> Iterator[tuple[str, str]]:
             yield from process_redirect_line(decoded_line)
 
 
-def add_redirects_to_db(dict_db: Lmdb, file: str) -> None:
+def create_redirects_db(dict_db: Lmdb, file: str) -> None:
     """
     Read {file} and insert the redirects into {dict_db}, which is a dict-like key-value
     store.
     """
     redirects = read_file_linearly(file)
-    # for redirect in redirects:
-    #     key, value = redirect
-    #     print(f"added {key}, {value}")
-    #     dict_db[key] = value
-
-    # TODO: This belongs in utilities and needs its own test.
-    def batcher(iterator: Iterator, batch_size: int) -> Iterator[dict]:
-        """
-        Take an iterator and return an iterator returns (terminology?) list of
-        {batch_size} on __next__.
-        """
-        while batch := dict(islice(iterator, batch_size)):
-            yield batch
-
-    redirects = read_file_linearly(file)
     batches = batcher(redirects, 5000)
 
     for batch in batches:
-        # print(batch)
         dict_db.update(batch)
-
-    # dict_db.close()
