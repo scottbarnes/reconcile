@@ -6,7 +6,7 @@ import pytest
 from lmdbm import Lmdb
 
 from reconcile.database import Database
-from reconcile.main import Reconciler
+from reconcile.main import create_ia_table, create_ol_table
 from reconcile.openlibrary_works import (
     build_ia_ol_edition_to_ol_work_column,
     copy_db_column,
@@ -29,7 +29,6 @@ def setup_db(tmp_path_factory) -> Iterator:
     """
     Setup a database to  use for the session
     """
-    r = Reconciler()
     d = tmp_path_factory.mktemp("data")
     sqlite_db = d / "sqlite.db"
     redirectdb = d / "redirect.db"
@@ -41,7 +40,8 @@ def setup_db(tmp_path_factory) -> Iterator:
     map_db: Lmdb = Lmdb.open(str(mapdb), "c")
 
     # Do initial database setup and data insertion.
-    r.create_db(db)  # For both just r.create_db(db)
+    create_ia_table(db)
+    create_ol_table(db)
     create_redirects_db(redirect_db, OL_ALL_DUMP)
 
     yield (db, redirect_db, map_db)
@@ -52,7 +52,6 @@ def setup_db_full(tmp_path_factory) -> Iterator:
     """
     A fully setup database.
     """
-    r = Reconciler()
     d = tmp_path_factory.mktemp("data")
     sqlite_db = d / "sqlite.db"
     redirectdb = d / "redirect.db"
@@ -64,7 +63,8 @@ def setup_db_full(tmp_path_factory) -> Iterator:
     map_db: Lmdb = Lmdb.open(str(mapdb), "c")
 
     # Do initial database setup and data insertion.
-    r.create_db(db)  # For both just r.create_db(db)
+    create_ia_table(db)
+    create_ol_table(db)
     create_redirects_db(redirect_db, OL_ALL_DUMP)
     copy_db_column(db, "ol", "ol_edition_id", "resolved_ol_edition_id")
     copy_db_column(db, "ol", "ol_work_id", "resolved_ol_work_id")

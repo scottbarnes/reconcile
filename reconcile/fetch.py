@@ -15,6 +15,7 @@ import sys
 from inspect import cleandoc
 
 import requests
+import typer
 from tqdm.auto import tqdm
 
 # Load configuration
@@ -22,6 +23,8 @@ config = configparser.ConfigParser()
 config.read("setup.cfg")
 CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
+
+app = typer.Typer()
 
 
 def download_file(urls: list[str]) -> str:
@@ -109,6 +112,7 @@ def get_ia_dump_urls(
         return get_ia_dump_urls(first, count - 1, False, urls)
 
 
+@app.command()
 def get_and_extract_data(show_prompt: bool = True) -> None:
     """
     Download the latest OL editions dump from
@@ -183,3 +187,7 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
     ol_file_path = cwd + "/" + ol_file
     print(f"\nAll done. Files downloaded to:\n{ia_file_path}\n{ol_file_path}\n")
     print("Run with `create-db` to parse and insert the data into the database.")
+
+
+if __name__ == "__main__":
+    app()

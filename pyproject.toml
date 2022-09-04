@@ -7,12 +7,12 @@ authors = ["Scott Barnes <scottreidbarnes@gmail.com>"]
 [tool.poetry.dependencies]
 python = "^3.10"
 orjson = "^3.7.11"
-fire = "^0.4.0"
 requests = "^2.28.1"
 tqdm = "^4.64.0"
 configparser = "^5.2.0"
 isbnlib = "^3.10.10"
 lmdbm = "^0.0.5"
+typer = {extras = ["all"], version = "^0.6.1"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
