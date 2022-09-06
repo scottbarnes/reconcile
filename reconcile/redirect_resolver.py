@@ -19,7 +19,7 @@ def process_redirect_line(line: list[str]) -> Iterator[tuple[str, str]]:
     ['/type/redirect', '/books/OL001M', '3', '<datetimestr>, '{JSON}\n']
     ['/type/redirect', '/books/OL001M', '3', '2010-04-14T02:53:24.620268', '{"created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "covers": [5685889], "last_modified": {"type": "/type/datetime", "value": "2010-04-14T02:53:24.620268"}, "latest_revision": 3, "location": "/books/OL002M", "key": "/books/OL001M", "type": {"key": "/type/redirect"}, "revision": 3}\n']  # noqa E501
 
-    Returns tuple pairs of either edition or work redirects, wwhere the first item is
+    Returns tuple pairs of either edition or work redirects, where the first item is
     the redirector_id, and the second item is the destination_id.
     """
     if line[0] != "/type/redirect":
@@ -36,7 +36,6 @@ def process_redirect_line(line: list[str]) -> Iterator[tuple[str, str]]:
     yield (key, value)
 
 
-# def read_file_linearly(file: str, row_command: Callable, *args) -> Iterator[tuple]:
 def read_file_linearly(file: str) -> Iterator[tuple[str, str]]:
     """
     Read {file} line by line without multiprocessing and yield the output from

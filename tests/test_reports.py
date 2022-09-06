@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from database import Database
-from main import create_ia_table, create_ol_table
 
 import reports
+from reconcile.database import Database
+from reconcile.main import create_ia_table, create_ol_table
 
 # Load configuration
 config = configparser.ConfigParser()

@@ -22,6 +22,9 @@ ipython = "^8.4.0"
 coverage = "^6.4.3"
 pre-commit = "^2.20.0"
 flake8-simplify = "^0.19.3"
+pylsp-mypy = "^0.6.2"
+pylsp-rope = "^0.1.10"
+codespell = "^2.2.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -40,3 +43,8 @@ build-backend = "poetry.core.masonry.api"
         "# noqa",
         "raise NotImplementedError"
     ]
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+strict = true

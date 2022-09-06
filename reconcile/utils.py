@@ -10,7 +10,7 @@ from isbnlib import is_isbn10, is_isbn13
 # Various utility functions.
 
 
-def nuller(v):
+def nuller(v: str | None) -> str | None:
     """
     Utility function to set '' to None so it's Null in DB. This may be
     pointless.

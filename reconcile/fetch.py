@@ -60,8 +60,8 @@ def download_file(urls: list[str]) -> str:
 def extract_gzip(file: str) -> str:
     """
     Extract a gzipped file and return the filename.
+    Renames file.name.ext.gz to file.name.ext
     """
-    # Parse file.name.ext.gz to file.name.ext
     output_filename = ".".join(file.split(".")[:-1])
     with gzip.open(file, "rb") as in_file, open(output_filename, "wb") as out_file:
         shutil.copyfileobj(in_file, out_file, 128 * 1024)
