@@ -41,6 +41,8 @@ repos:
         additional_dependencies:
           - flake8-black>=0.3.3
           - flake8-simplify>=0.19.3
+          - flake8-comprehensions>=3.10.0
+          - flake8-encodings>=0.5.0.post1
         language_version: python3
 
   - repo: https://github.com/pre-commit/mirrors-mypy

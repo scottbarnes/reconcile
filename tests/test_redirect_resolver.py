@@ -1,14 +1,14 @@
 import configparser
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from lmdbm import Lmdb
 
-from reconcile.redirect_resolver import (
+from reconcile.redirect_resolver import (  # read_file_linearly,
     create_redirects_db,
     process_redirect_line,
-    read_file_linearly,
 )
 
 # Load configuration
@@ -19,6 +19,7 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 # REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 # IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 
 # Constants
 WORK_REDIRECT_1 = [
@@ -44,19 +45,18 @@ def setup_db(tmp_path_factory) -> Iterator:
 
 def test_can_insert_and_get_item_from_db(setup_db) -> None:
     resolve_db, _ = setup_db
-    resolve_db[b"Mount Whitney"] = b"Usually crowded"
-    assert resolve_db.get(b"Mount Whitney") == b"Usually crowded"
+    resolve_db["Mount Whitney"] = b"Usually crowded"
+    assert resolve_db.get("Mount Whitney") == b"Usually crowded"
 
 
 def test_can_get_edition_redirect_key_and_value() -> None:
-    gen = process_redirect_line(WORK_REDIRECT_1)
-    assert next(gen) == ("OL001M", "OL002M")
+    assert process_redirect_line(WORK_REDIRECT_1) == ("OL001M", "OL002M")
 
 
-def test_can_read_a_row() -> None:
-    # parsed = read_file_linearly(OL_ALL_DUMP, process_redirect_line)
-    parsed = read_file_linearly(OL_ALL_DUMP)
-    assert next(parsed) == ("OL001M", "OL002M")
+# def test_can_read_a_row() -> None:
+#     # parsed = read_file_linearly(OL_ALL_DUMP, process_redirect_line)
+#     parsed = read_file_linearly(OL_ALL_DUMP)
+#     assert next(parsed) == ("OL001M", "OL002M")
 
 
 def test_add_and_retrieve_items_from_db(setup_db) -> None:
@@ -64,8 +64,13 @@ def test_add_and_retrieve_items_from_db(setup_db) -> None:
     Get an edition and a work redirect. And ensure non-redirects don't end up in
     the redirect store.
     """
+    # Hypothetical output from write_processed_chunk_lines_to_disk() for redirects.
+    f = Path("tests/ol_dump_parsed_redirect_01234.txt")
+    f.write_text("OL002M\tOL003M\nOL002W\tOL003W")
+
     resolve_db, _ = setup_db
-    create_redirects_db(resolve_db, OL_ALL_DUMP)
+    create_redirects_db(resolve_db, OL_DUMP_PARSED_PREFIX)
     assert resolve_db.get("OL002M") == b"OL003M"
     assert resolve_db.get("OL003M") is None
     assert resolve_db.get("OL002W") == b"OL003W"
+    f.unlink()

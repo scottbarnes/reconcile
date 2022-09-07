@@ -1,17 +1,25 @@
+import configparser
 import mmap
-from collections.abc import Iterator
+import sys
+from collections.abc import Generator, Iterator
+from pathlib import Path
 
 import orjson
 from lmdbm import Lmdb
-from tqdm import tqdm
-from utils import batcher, bufcount
+from utils import batcher
 
 """
 Functions to resolve redirects and put them in a key/value store.
 """
 
+# Load configuration
+config = configparser.ConfigParser()
+config.read("setup.cfg")
+CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
+FILES_DIR = config.get(CONF_SECTION, "files_dir")
 
-def process_redirect_line(line: list[str]) -> Iterator[tuple[str, str]]:
+
+def process_redirect_line(line: list[str]) -> tuple[str, str] | None:
     """
     Read a line of the full dump and pull out the redirect keys and values for use in
     making a key-value store of redirects.
@@ -21,43 +29,43 @@ def process_redirect_line(line: list[str]) -> Iterator[tuple[str, str]]:
 
     Returns tuple pairs of either edition or work redirects, where the first item is
     the redirector_id, and the second item is the destination_id.
+    ("OL001M", "OL002M")
     """
-    if line[0] != "/type/redirect":
-        return
-
     key = line[1].split("/")[-1]
 
     # Only process editions and works.
     if not key.endswith(("W", "M")):
-        return
+        return None
 
     d = orjson.loads(line[4])
     value = d.get("location", "").split("/")[-1]
-    yield (key, value)
+    return (key, value)
 
 
-def read_file_linearly(file: str) -> Iterator[tuple[str, str]]:
+def create_redirects_db(dict_db: Lmdb, base_filename: str) -> None:
     """
-    Read {file} line by line without multiprocessing and yield the output from
-    process_redirect_line().
-
-    Returns
-    """
-    lines = bufcount(file)
-    with open(file, "r+b") as fp, tqdm(total=lines) as pbar:
-        mm = mmap.mmap(fp.fileno(), 0)
-        for line in iter(mm.readline, b""):
-            decoded_line = line.decode("utf-8").split("\t")
-            pbar.update(1)
-            yield from process_redirect_line(decoded_line)
-
-
-def create_redirects_db(dict_db: Lmdb, file: str) -> None:
-    """
-    Read {file} and insert the redirects into {dict_db}, which is a dict-like key-value
+    Use {base_file} to read all processed redirect TSVs and to and insert the redirects
+    into {dict_db}, which is a dict-like key-value
     store.
+    By default filenames are:
+        ol_dump_parsed_redirect_<uuid>.txt
+    Contents are:
+        OL7029749M\tOL7022571M
+    Where the item an Open Library ID, and the second is its redirected ID.
     """
-    redirects = read_file_linearly(file)
+    path = Path(base_filename)
+    files = Path(FILES_DIR).glob(f"{path.stem}_redirect_*{path.suffix}")
+
+    def get_redirects_from_disk(files: Generator) -> Iterator[tuple[str, str]]:
+        """Read from disk, process, create generator for use in batching."""
+        for file in files:
+            with file.open(mode="r+b") as fp:
+                mm = mmap.mmap(fp.fileno(), 0)
+                for line in iter(mm.readline, b""):
+                    original_id, redirected_id = line.decode("utf-8").split("\t")
+                    yield (original_id.strip(), redirected_id.strip())
+
+    redirects = get_redirects_from_disk(files)
     batches = batcher(redirects, 5000)
 
     for batch in batches:

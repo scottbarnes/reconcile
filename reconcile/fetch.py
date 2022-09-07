@@ -113,7 +113,7 @@ def get_ia_dump_urls(
 
 
 @app.command()
-def get_and_extract_data(show_prompt: bool = True) -> None:
+def fetch_data(show_prompt: bool = True) -> None:
     """
     Download the latest OL editions dump from
     https://openlibrary.org/data/ol_dump_editions_latest.txt.gz and the latest
@@ -123,9 +123,7 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
 
     After download, extract if necessary and delete unextracted files.
     """
-    OL_EDITIONS_DUMP_URL = [
-        "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz"
-    ]
+    OL_EDITIONS_DUMP_URL = ["https://openlibrary.org/data/ol_dump_latest.txt.gz"]
     # Get The three most recent possible URLs for the IA
     # _physical_direct_direct.tsv
     today = datetime.date.today()
@@ -138,7 +136,7 @@ def get_and_extract_data(show_prompt: bool = True) -> None:
         response = input(
             cleandoc(
                 f"""This is a convenience function to download the necessary files into
-            {cwd + '/files/'}. As of August 2022 this takes about 40GB. If you wish to
+            {cwd + '/files/'}. As of August 2022 this takes about 60GB. If you wish to
             store the files elsewhere, see README.md for information on manually
             fetching the files and editing setup.cfg to specify their locations.
 

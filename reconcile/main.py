@@ -8,24 +8,24 @@ from pathlib import Path
 import fetch
 import typer
 from database import Database
+from dump_reader import make_chunk_ranges, process_chunk
 from lmdbm import Lmdb
-from redirect_resolver import create_redirects_db
-from tqdm import tqdm
-
-from reconcile.openlibrary_editions import (
+from openlibrary_editions import (
     insert_ol_data_in_ol_table,
-    make_chunk_ranges,
     pre_create_ol_table_file_cleanup,
     update_ia_editions_from_parsed_tsvs,
-    write_chunk_to_disk,
 )
-from reconcile.openlibrary_works import (
+from openlibrary_works import (
     build_ia_ol_edition_to_ol_work_column,
     copy_db_column,
     create_resolved_edition_work_mapping,
     update_redirected_ids,
 )
-from reconcile.reports import (
+from redirect_resolver import create_redirects_db
+from tqdm import tqdm
+from utils import bufcount, nuller, path_check
+
+from reports import (
     get_editions_with_multiple_works,
     get_ia_links_to_ol_but_ol_edition_has_no_ocaid,
     get_ia_with_same_ol_edition_id,
@@ -34,28 +34,23 @@ from reconcile.reports import (
     get_ol_has_ocaid_but_ia_has_no_ol_edition_join,
     query_ol_id_differences,
 )
-from reconcile.utils import bufcount, nuller, path_check
 
+# Load configuration
 config = configparser.ConfigParser()
 config.read("setup.cfg")
 CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
-OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
-OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REDIRECT_DB = config.get(CONF_SECTION, "redirect_db")
 MAPPING_DB = config.get(CONF_SECTION, "mapping_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 
 app = typer.Typer()
-app.add_typer(
-    fetch.app,
-    name="fetch",
-    help="Download and extract Open Library and Internet Archive Dumps",
-)
+app.registered_commands += fetch.app.registered_commands
 
 
 def create_ia_table(db: Database, ia_dump_path: str = IA_PHYSICAL_DIRECT_DUMP) -> None:
@@ -73,8 +68,6 @@ def create_ia_table(db: Database, ia_dump_path: str = IA_PHYSICAL_DIRECT_DUMP) -
     # function.
 
     try:
-        # db.execute("PRAGMA synchronous = OFF")  # Speed up.
-        # db.execute("PRAGMA journal_mode = MEMORY")
         db.execute(
             "CREATE TABLE ia (ia_id TEXT, ia_ol_edition_id TEXT, ia_ol_work_id TEXT, \
             ol_edition_id TEXT, resolved_ia_ol_work_id TEXT, \
@@ -94,15 +87,15 @@ def create_ia_table(db: Database, ia_dump_path: str = IA_PHYSICAL_DIRECT_DUMP) -
 
     record_total = bufcount(ia_dump_path)
     print("Inserting the Internet Archive records.")
-    with open(ia_dump_path, newline="") as file, tqdm(total=record_total) as pbar:
+    with open(ia_dump_path, newline="", encoding="UTF-8") as file, tqdm(
+        total=record_total
+    ) as pbar:
         reader = csv.reader(file, delimiter="\t")
         for row in reader:
             # TODO: Is this 'better' than try/except?
             if len(row) < 4:
                 continue
 
-            # Get the IDs, though some are empty strings.
-            # Format: id<tab>ia_id<tab>ia_ol_edition<tab>ia_ol_work
             ia_id, ia_ol_edition_id, ia_ol_work_id = row[1], row[2], row[3]
 
             # Why is writing empty strings breaking this?
@@ -127,8 +120,8 @@ def create_ia_table(db: Database, ia_dump_path: str = IA_PHYSICAL_DIRECT_DUMP) -
 
 def create_ol_table(
     db: Database,
-    filename: str = OL_EDITIONS_DUMP,
-    size: int = 256 * 512 * 512,
+    filename: str = OL_ALL_DUMP,
+    size: int = 1024 * 1024 * 1024,
 ):
     """
     Parse the (uncompressed) Open Library editions dump named {filename} and insert
@@ -138,18 +131,15 @@ def create_ol_table(
     Because uncompressed dump is so large, the script parallel processes the files
     in chunks of {size} bytes. For each chunk, it's read from the disk, parsed, and
     added to the database.
-
-    :param Database db: the database connection to use.
-    :param str filename: path to the unparsed Open Library editions dump.
     """
 
-    in_path = Path(OL_EDITIONS_DUMP)
+    in_path = Path(OL_ALL_DUMP)
     if not in_path.is_file():
-        print(f"Cannot find {OL_EDITIONS_DUMP}.")
+        print(f"Cannot find {OL_ALL_DUMP}.")
         print("Either `fetch-data` or check `ol_editions_dump` in setup.cfg")
         typer.Exit(1)
 
-    # TODO: clean up should be part of the functions creating the mess.
+    # Clean up files from previous runs.
     pre_create_ol_table_file_cleanup()
 
     chunks = make_chunk_ranges(filename, size)
@@ -171,7 +161,7 @@ def create_ol_table(
     print("Note: this progress bar is a little lumpy because of multiprocessing.")
     total_chunks = len(chunks)
     with mp.Pool(num_parallel) as pool, tqdm(total=total_chunks) as pbar:
-        result = pool.imap_unordered(write_chunk_to_disk, chunks)
+        result = pool.imap_unordered(process_chunk, chunks)
         for _ in result:
             pbar.update(1)
 
@@ -241,13 +231,8 @@ def resolve_redirects():
     redirect_db: Lmdb = Lmdb.open(REDIRECT_DB, "c")
     map_db: Lmdb = Lmdb.open(MAPPING_DB, "c")
 
-    p = Path(REDIRECT_DB)
-    if p.is_dir():
-        print(f"Error: {REDIRECT_DB} already exists.")
-        sys.exit(1)
-
     print("Creating a key-value store for the redirects.")
-    create_redirects_db(redirect_db, OL_ALL_DUMP)
+    create_redirects_db(redirect_db, OL_DUMP_PARSED_PREFIX)
 
     print("Copying tables to save time when resolving the redirects.")
     copy_db_column(db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id")

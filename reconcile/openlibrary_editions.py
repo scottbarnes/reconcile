@@ -3,10 +3,8 @@ Functions for chunking, reading, parsing, and INSERTing the Open Library edition
 This is used by create_ol_table() from main.py.
 """
 import configparser
-import csv
 import mmap
 import sys
-import uuid
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -21,8 +19,10 @@ config = configparser.ConfigParser()
 config.read("setup.cfg")
 CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
-OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
-OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
+REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
+IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
+OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
@@ -35,7 +35,7 @@ db = Database(SQLITE_DB)
 def pre_create_ol_table_file_cleanup() -> None:
     """Clean up stale files."""
     # OL_EDITIONS_DUMP_PARSED base.
-    out_path = Path(OL_EDITIONS_DUMP_PARSED)
+    out_path = Path(OL_DUMP_PARSED_PREFIX)
     files = Path(FILES_DIR).glob(f"{out_path.stem}*{out_path.suffix}")
     for f in files:
         f.unlink()
@@ -47,7 +47,9 @@ def pre_create_ol_table_file_cleanup() -> None:
             p.unlink()
 
 
-def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, int, int]:
+def process_edition_line(
+    row: list[str],
+) -> tuple[str | None, str | None, str | None, int, int]:
     """
     For each decoded line in the editions dump, process it to get values for insertion
     into the database.
@@ -106,100 +108,8 @@ def process_line(row: list[str]) -> tuple[str | None, str | None, str | None, in
     )
 
 
-def make_chunk_ranges(file_name: str, size: int) -> list[tuple[int, int, str]]:
-    """
-    Reads {file_name} in chunks of {size} bytes. Creates byte start/end/filepath
-    tuples so {file_name} can be read in chunks from index[0] to index[0] of each tuple.
-
-    Returns:
-    start, end, filepath
-    [(0, 32769146, '/path/to/file'), (32769146, 65538896, '/path/to/file')]
-    """
-    chunks: list[tuple[int, int, str]] = []
-    path = Path(file_name)
-    cursor = 0
-    file_end = path.stat().st_size
-
-    with path.open(mode="rb") as file:
-        while True:
-            chunk_start = cursor
-            file.seek(file.tell() + size, 1)
-            file.readline()  # Move the cursor to the bytes at the end of the line.
-            chunk_end = file.tell()
-            cursor = chunk_end
-            chunks.append((chunk_start, chunk_end, file_name))
-
-            if chunk_end > file_end:
-                break
-
-    return chunks
-
-
-def read_and_convert_chunk(
-    chunk: tuple[int, int, str]
-) -> Iterator[tuple[str | None, str | None, str | None, int, int]]:
-    """
-    For {chunk}, get the byte range to read, read it, and process the lines therein.
-    Chunk:
-    start, end, filepath
-    (0, 32769146, '/path/to/file')
-
-    Return generator of:
-    (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
-    """
-    start, end, file = chunk
-    position = start
-
-    with open(file, "r+b") as fp:
-        mm = mmap.mmap(fp.fileno(), 0)
-        mm.seek(start)
-        for line in iter(mm.readline, b""):
-            position = mm.tell()
-            if position >= end:
-                return
-
-            row = line.decode("utf-8").split("\t")
-            if len(row) != 5:
-                record_errors(row, REPORT_ERRORS)
-                continue
-
-            parsed_row = process_line(row)
-            yield parsed_row
-
-
-def write_chunk_to_disk(
-    chunk: tuple[int, int, str], output_base: str = OL_EDITIONS_DUMP_PARSED
-) -> None:
-    """
-    Take a chunk from make_chunk_ranges() and write it to TSV with a unique filename
-    based on {output_base}.
-
-    Because of multiprocessing, each worker writes to its own filename, with a
-    uuid().hex inserted into it.
-
-    Each chunk is of the format (start, end, 'path'), where START and END are bytes in
-    the file. E.g. (0, 32769146, '/path/to/file')
-
-    When written, Open Library Edition data looks like:
-    edition_id\twork_id\tocaid\thas_multiple_works\thas_ia_source_record
-    OL1001295M\tOL3338473W\tjewishchristiand0000boys\t0\t1
-    """
-    path = Path(output_base)
-
-    new_stem = path.stem + "_" + uuid.uuid4().hex
-    unique_fname = path.with_stem(new_stem)
-    data = read_and_convert_chunk(chunk)
-    with unique_fname.open(mode="w") as fp:
-        writer = csv.writer(fp, delimiter="\t")
-        for row in data:
-            if len(row) != 5:
-                record_errors(row, REPORT_ERRORS)
-                continue
-            writer.writerow(row)
-
-
 def insert_ol_data_in_ol_table(
-    db: Database, filename: str = OL_EDITIONS_DUMP_PARSED
+    db: Database, filename: str = OL_DUMP_PARSED_PREFIX
 ) -> None:
     """
     Read the parsed Open Library edition TSVs and INSERT the contents into the ol table
@@ -208,12 +118,9 @@ def insert_ol_data_in_ol_table(
     """
     path = Path(filename)
 
-    # Glob the input parsed files, get line total for tqdm, and reassign the exhausted
-    # {files} generator.
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+    files = list(Path(FILES_DIR).glob(f"{path.stem}_edition_*{path.suffix}"))
     lines = [bufcount(f) for f in files]
     total = sum(lines)
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
 
     def get_ol_rows() -> Iterator[Sequence[str | None]]:
         """
@@ -251,7 +158,7 @@ def insert_ol_data_in_ol_table(
 
 
 def update_ia_editions_from_parsed_tsvs(
-    db: Database, filename: str = OL_EDITIONS_DUMP_PARSED
+    db: Database, filename: str = OL_DUMP_PARSED_PREFIX
 ) -> None:
     """
     Read the parsed Open Library editions TSV from {filename} and use the parsed data to
@@ -262,12 +169,9 @@ def update_ia_editions_from_parsed_tsvs(
     """
     path = Path(filename)
 
-    # Glob the input parsed files, get line total for tqdm, and reassign the exhausted
-    # {files} generator.
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
+    files = list(Path(FILES_DIR).glob(f"{path.stem}_edition_*{path.suffix}"))
     lines = [bufcount(f) for f in files]
     total = sum(lines)
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
 
     def get_ol_ia_pairs():
         """
@@ -289,60 +193,3 @@ def update_ia_editions_from_parsed_tsvs(
     collection = get_ol_ia_pairs()
     db.executemany("UPDATE ia SET ol_edition_id = ? WHERE ia_id = ?", collection)
     db.commit()
-
-
-######
-# Some functions not currently in use
-######
-
-# def update_ia_table_with_ol_data(chunk: tuple[int, int, str]) -> None:
-#     """
-#     Read and parse the Open Library data in the byte range of {chunk}. Then for
-#     each line, check if there is both ol_id AND ol_ocaid. If there are both,
-#     UPDATE the ia table to include the ol_id associated with the ia table's
-#     ocaid/ia_id.
-
-#     Chunk:
-#     start, end, file path.
-#     (0, 32769146, '/path/to/file')
-
-#     read_and_converted_chunk():
-#     (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
-
-#     :param chunk tuple: Chunk to insert.
-#     """
-#     # The DB isn't (can't?) be passed as an argument because of issues with pickling
-#     # and the map function in multiprocessing.pool.
-#     db = Database(SQLITE_DB)
-
-#     def get_ol_ids_with_ol_ocaid(data) -> Iterator[tuple[str, str]]:
-#         """Find ol_id and ol_ocaid pairs to UPDATE ia table."""
-#         for row in data:
-#             ol_id, _, ol_ocaid, _, _ = row
-#             if ol_id and ol_ocaid:
-#                 yield (ol_id, ol_ocaid)
-
-#     data = read_and_convert_chunk(chunk)
-#     oid_ocaid_pairs = get_ol_ids_with_ol_ocaid(data)
-#     # db.execute("PRAGMA synchronous = OFF")
-#     db.executemany("UPDATE ia SET ol_edition_id = ? WHERE ia_id = ?", oid_ocaid_pairs)
-#     db.close()
-
-# def insert_ol_data_in_ol_table(chunk: tuple[int, int, str]) -> None:
-#     """
-#     For {chunk}, read_and_convert_chunk(), then insert ito into the database.
-
-#     Chunk:
-#     start, end, filepath
-#     (0, 32769146, '/path/to/file')
-
-#     :param chunk tuple: chunk to insert.
-#     """
-#     # The DB isn't (can't?) be passed as an argument because of issues with pickling
-#     # and the map function in multiprocessing.pool.
-#     db = Database(SQLITE_DB)
-
-#     data = read_and_convert_chunk(chunk)
-#     db.execute("PRAGMA synchronous = OFF")
-#     db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?)", data)
-#     db.close()

@@ -25,7 +25,7 @@ def query_output_writer(query_result: list[str], out_file: str) -> None:
     """
     Helper function to write output from queries to TSV.
     """
-    with open(out_file, "w") as file:
+    with open(out_file, "w", encoding="UTF-8") as file:
         writer = csv.writer(file, delimiter="\t")
         for row in query_result:
             writer.writerow(row)

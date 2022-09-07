@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import reports
+import reconcile.reports as reports
 from reconcile.database import Database
 from reconcile.main import create_ia_table, create_ol_table
 
@@ -15,8 +15,8 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
-OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
-OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
+OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
@@ -65,7 +65,7 @@ def cleanup():
     if error_file.is_file():
         error_file.unlink()
 
-    path = Path(OL_EDITIONS_DUMP_PARSED)
+    path = Path(OL_DUMP_PARSED_PREFIX)
     files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
     for file in files:
         file.unlink()
@@ -80,7 +80,7 @@ def setup_db():
     db = Database(SQLITE_DB)
     create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
     # Specify a size to test chunking.
-    create_ol_table(db, OL_EDITIONS_DUMP, size=10_000)
+    create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
     yield db  # See the Database class
 
 
@@ -95,7 +95,7 @@ def test_query_ol_id_differences(setup_db: Database):
     assert file.is_file() is True
     assert (
         file.read_text()
-        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\t\nenvironmentalhea00moel_0\tOL1000001M\tOL0000001W\tOL1003612M\t\t\nol_to_ia_to_ol_backlink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\t\t\n"  # noqa E501
+        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\t\nenvironmentalhea00moel_0\tOL1000001M\tOL000001W\tOL1003612M\t\t\nol_to_ia_to_ol_backlink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\t\t\n"  # noqa E501
     )
 
 

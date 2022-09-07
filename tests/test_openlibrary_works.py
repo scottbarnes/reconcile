@@ -22,6 +22,7 @@ config.read("setup.cfg")
 CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 
 
 @pytest.fixture()
@@ -42,7 +43,7 @@ def setup_db(tmp_path_factory) -> Iterator:
     # Do initial database setup and data insertion.
     create_ia_table(db)
     create_ol_table(db)
-    create_redirects_db(redirect_db, OL_ALL_DUMP)
+    create_redirects_db(redirect_db, OL_DUMP_PARSED_PREFIX)
 
     yield (db, redirect_db, map_db)
 
@@ -65,7 +66,7 @@ def setup_db_full(tmp_path_factory) -> Iterator:
     # Do initial database setup and data insertion.
     create_ia_table(db)
     create_ol_table(db)
-    create_redirects_db(redirect_db, OL_ALL_DUMP)
+    create_redirects_db(redirect_db, OL_DUMP_PARSED_PREFIX)
     copy_db_column(db, "ol", "ol_edition_id", "resolved_ol_edition_id")
     copy_db_column(db, "ol", "ol_work_id", "resolved_ol_work_id")
     update_redirected_ids(

@@ -9,12 +9,7 @@ import pytest
 from reconcile import __version__
 from reconcile.database import Database
 from reconcile.main import create_ia_table, create_ol_table
-from reconcile.openlibrary_editions import (
-    make_chunk_ranges,
-    process_line,
-    read_and_convert_chunk,
-    write_chunk_to_disk,
-)
+from reconcile.openlibrary_editions import process_edition_line
 from reconcile.utils import (
     bufcount,
     get_bad_isbn_10s,
@@ -30,8 +25,8 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
-OL_EDITIONS_DUMP = config.get(CONF_SECTION, "ol_editions_dump")
-OL_EDITIONS_DUMP_PARSED = config.get(CONF_SECTION, "ol_editions_dump_parsed")
+OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
+OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
 REPORT_ERRORS = config.get(CONF_SECTION, "report_errors")
 REPORT_BAD_ISBNS = config.get(CONF_SECTION, "report_bad_isbns")
@@ -90,7 +85,7 @@ def cleanup():
     if error_file.is_file():
         error_file.unlink()
 
-    path = Path(OL_EDITIONS_DUMP_PARSED)
+    path = Path(OL_DUMP_PARSED_PREFIX)
     files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
     for file in files:
         file.unlink()
@@ -105,7 +100,7 @@ def setup_db():
     db = Database(SQLITE_DB)
     create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
     # Specify a size to test chunking.
-    create_ol_table(db, OL_EDITIONS_DUMP, size=10_000)
+    create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
     yield db  # See the Database class
 
 
@@ -159,21 +154,21 @@ def test_process_line() -> None:
         r"""{"publishers": ["Stationery Office Books"], "key": "/books/OL10000149M", "created": {"type": "/type/datetime", "value": "2008-04-30T09:38:13.731961"}, "number_of_pages": 87, "isbn_13": ["9780107805548"], "physical_format": "Hardcover", "isbn_10": ["0107805545"], "publish_date": "December 31, 1994", "last_modified": {"type": "/type/datetime", "value": "2010-03-11T23:51:36.723486"}, "authors": [{"key": "/authors/OL46053A"}], "title": "40house of Lords Official Report", "latest_revision": 2, "type": {"key": "/type/edition"}, "revision": 2}""",  # noqa E501
     ]
 
-    assert process_line(multi_works_source_rec) == (
+    assert process_edition_line(multi_works_source_rec) == (
         "OL1002158M",
         "OL1883432W",
         "organizinggenius0000benn",
         1,
         1,
     )
-    assert process_line(noocaid_nomulti_no_ia) == (
+    assert process_edition_line(noocaid_nomulti_no_ia) == (
         "OL10000149M",
         "OL14903292W",
         None,
         0,
         0,
     )
-    assert process_line(no_work) == ("OL10000149M", None, None, 0, 0)
+    assert process_edition_line(no_work) == ("OL10000149M", None, None, 0, 0)
 
 
 def test_process_line_and_validate_isbn() -> None:
@@ -188,48 +183,9 @@ def test_process_line_and_validate_isbn() -> None:
         "2010-03-11T23:51:36.723486",
         r"""{"isbn_13": ["9780107805548", "XYZ", ""], "isbn_10": ["0107805545", "X111111111"]}""",  # noqa E501
     ]
-    process_line(edition)
+    process_edition_line(edition)
     assert "XYZ" in p.read_text()
     assert "X111111111" in p.read_text()
-
-
-def test_make_chunk_ranges() -> None:
-    """Make sure chunk ranges create properly."""
-    assert make_chunk_ranges(OL_EDITIONS_DUMP, 10_000) == [
-        (0, 10884, "./tests/seed_ol_dump_editions.txt"),
-        (10884, 31768, "./tests/seed_ol_dump_editions.txt"),
-    ]
-
-
-def test_read_and_covert_chunk() -> None:
-    """Read the first entry from chunk."""
-    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
-    gen = read_and_convert_chunk(chunk)
-    assert next(gen) == ("OL10000149M", "OL14903292W", None, 0, 0)  # type: ignore
-    for _ in gen:
-        pass
-
-
-def test_write_chunk_to_disk() -> None:
-    """Write a chunk to disk."""
-    # Delete any existing written chunks.
-    path = Path(OL_EDITIONS_DUMP_PARSED)
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
-    for file in files:
-        file.unlink()
-
-    chunk = (0, 10884, "./tests/seed_ol_dump_editions.txt")
-    write_chunk_to_disk(chunk, OL_EDITIONS_DUMP_PARSED)
-
-    # The written files have random hex strings, so use globbing to get the filenames
-    # to search the chunk. Note: the search term must be contained with what would be
-    # within the first chunk, as this is just writing one chunk. Something too far
-    # down the unparsed file won't be in the first chunk.
-    path = Path(OL_EDITIONS_DUMP_PARSED)
-    files = Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}")
-
-    edition = "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
-    assert any(edition in file.read_text() for file in files) is True
 
 
 ################
