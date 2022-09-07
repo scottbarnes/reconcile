@@ -26,6 +26,8 @@ from tqdm import tqdm
 from utils import bufcount, nuller, path_check
 
 from reports import (
+    get_broken_ol_ia_backlinks_after_edition_to_work_resolution0,
+    get_broken_ol_ia_backlinks_after_edition_to_work_resolution1,
     get_editions_with_multiple_works,
     get_ia_links_to_ol_but_ol_edition_has_no_ocaid,
     get_ia_with_same_ol_edition_id,
@@ -206,6 +208,11 @@ def all_reports() -> None:
         get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
         print("\n")
         get_ia_with_same_ol_edition_id(db)
+        print("\n")
+        get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(db)
+        print("\n")
+        get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(db)
+
     except sqlite3.OperationalError as err:
         print(f"SQLite error: {err}")
         if "no such table" in err.args[0]:

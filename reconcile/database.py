@@ -199,3 +199,43 @@ class Database:
         ORDER  BY a.ia_ol_edition_id
         """
         return self.query(sql)
+
+    def get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(self) -> list[Any]:
+        """
+        This appears to find backlinks that are definitely broken because the OCAIDs
+        match but even after resolution, using works as a proxy, the IA link is
+        internally inconsistent between its work and edition reference. Maybe
+        """
+        sql = """
+        SELECT     ia.ia_id,
+                   ia.ia_ol_work_id,
+                   ia.resolved_ia_ol_work_id,
+                   ol.ol_work_id,
+                   ol.resolved_ol_work_id
+        FROM       ia
+        INNER JOIN ol
+        ON         ia.ia_id = ol.ol_ocaid
+        WHERE      ia.resolved_ia_ol_work_id IS NOT ol.resolved_ol_work_id
+        AND        ia.ia_ol_work_id IS NOT ia.resolved_ia_ol_work_id
+        """
+        return self.query(sql)
+
+    def get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(self) -> list[Any]:
+        """
+        Similar to version 1, but with many false positives. Seems to find works that
+        are likely to be merge candidates. Even after resolution of works, the works
+        are different on both ends, but many appear to be works that should be merged.
+        """
+        sql = """
+        SELECT     ia.ia_id,
+                   ia.ia_ol_work_id,
+                   ia.resolved_ia_ol_work_id,
+                   ol.ol_work_id,
+                   ol.resolved_ol_work_id
+        FROM       ia
+        INNER JOIN ol
+        ON         ia.ia_id = ol.ol_ocaid
+        WHERE      ia.resolved_ia_ol_work_id IS NOT ol.resolved_ol_work_id
+        AND        ia.ia_ol_work_id IS NOT NULL
+        """
+        return self.query(sql)

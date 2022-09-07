@@ -31,6 +31,12 @@ REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
 REPORT_IA_WITH_SAME_OL_EDITION = config.get(
     CONF_SECTION, "report_get_ia_with_same_ol_edition"
 )
+REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0 = config.get(
+    CONF_SECTION, "report_broken_ol_ia_backlinks_after_edition_to_work_resolution0"
+)
+REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1 = config.get(
+    CONF_SECTION, "report_broken_ol_ia_backlinks_after_edition_to_work_resolution1"
+)
 
 
 def process_result(result: list[Any], out_file: str, message: str) -> None:
@@ -169,4 +175,22 @@ def get_ia_with_same_ol_edition_id(
         "Total Archive.org items with the same Open Library edition ID"  # noqa E501
     )
     result = db.get_ia_id_with_same_ol_edition_id()
+    process_result(result, out_file, message)
+
+
+def get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
+    db: Database,
+    out_file: str = REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0,
+) -> None:
+    message = "Broken backlinks without many false positive"
+    result = db.get_broken_ol_ia_backlinks_after_edition_to_work_resolution0()
+    process_result(result, out_file, message)
+
+
+def get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
+    db: Database,
+    out_file: str = REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1,
+) -> None:
+    message = "Broken backlinks many false positives. (Merge candidates?)"
+    result = db.get_broken_ol_ia_backlinks_after_edition_to_work_resolution1()
     process_result(result, out_file, message)

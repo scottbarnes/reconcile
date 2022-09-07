@@ -6,7 +6,7 @@ import pytest
 
 import reconcile.reports as reports
 from reconcile.database import Database
-from reconcile.main import create_ia_table, create_ol_table
+from reconcile.main import create_ia_table, create_ol_table, resolve_redirects
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -38,6 +38,12 @@ REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
 )
 REPORT_IA_WITH_SAME_OL_EDITION = config.get(
     CONF_SECTION, "report_get_ia_with_same_ol_edition"
+)
+REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0 = config.get(
+    CONF_SECTION, "report_broken_ol_ia_backlinks_after_edition_to_work_resolution0"
+)
+REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1 = config.get(
+    CONF_SECTION, "report_broken_ol_ia_backlinks_after_edition_to_work_resolution1"
 )
 
 
@@ -81,6 +87,20 @@ def setup_db():
     create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
     # Specify a size to test chunking.
     create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
+    yield db  # See the Database class
+
+
+@pytest.fixture()
+def setup_db_with_redirects():
+    """
+    Setup the database table, populate Internet Archive data, and yield a
+    Database instance to use.
+    """
+    db = Database(SQLITE_DB)
+    create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
+    # Specify a size to test chunking.
+    create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
+    resolve_redirects()
     yield db  # See the Database class
 
 
@@ -181,6 +201,29 @@ def test_get_ia_with_same_ol_edition(setup_db: Database) -> None:
     file = Path(REPORT_IA_WITH_SAME_OL_EDITION)
     assert file.is_file() is True
     assert file.read_text() == "blobbook\tOL0000001M\ndifferentbook\tOL0000001M\n"
+
+
+# def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
+#     setup_db_with_redirects,
+# ) -> None:
+#     db = setup_db_with_redirects
+#     reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
+#         db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0
+#     )
+#     file = Path(REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0)
+#     assert file.is_file() is True
+#     assert "ol_to_ia_to_ol_backlink_diff_editions_same_work" not in file.read_text()
+#     assert "ol_to_ia_to_ol_backlink_diff_editions_diff_work" in file.read_text()
+
+
+# def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
+#     setup_db_with_redirects,
+# ) -> None:
+#     db = setup_db_with_redirects
+#     reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
+#         db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1
+#     )
+#     pass
 
 
 # def test_all_reports(setup_db) -> None:
