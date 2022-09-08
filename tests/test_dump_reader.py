@@ -39,8 +39,8 @@ def test_make_chunk_ranges() -> None:
     assert make_chunk_ranges(
         OL_ALL_DUMP, 15_000
     ) == [  # Size must be identical everywhere.
-        (0, 15431, "./tests/seed_ol_dump_all.txt"),
-        (15431, 30431, "./tests/seed_ol_dump_all.txt"),
+        (0, 15_401, "./tests/seed_ol_dump_all.txt"),
+        (15_401, 30_401, "./tests/seed_ol_dump_all.txt"),
     ]
 
 
@@ -61,7 +61,7 @@ def test_read_chunk_lines() -> None:
         "/books/OL003M",
         "4",
         "2010-04-14T02:44:13.274395",
-        '{"publishers": ["J. & A. Churchill"], "subtitle": "a treatise of decomposition", "covers": [5737156], "last_modified": {"type": "/type/datetime", "value": "2010-04-14T02:44:13.274395"}, "latest_revision": 4, "key": "/books/OL003M", "authors": [{"key": "/authors/OL2429124A"}], "ocaid": "ol_to_ia_to_ol_backlink_diff_editions_same_work", "publish_places": ["London"], "pagination": "v. ;", "source_records": ["ia:ol_to_ia_to_ol_backlink_diff_editions_same_work", "ia:commercialorgani04allerich", "ia:commercialorgani31allerich", "ia:commercialorgani32allerich", "ia:commercialorgani33allerich"], "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "title": "Commercial organic analysis", "edition_name": "2d ed., rev. and enl.", "subjects": ["Chemistry, Analytic", "Chemistry, Organic"], "publish_date": "1884", "publish_country": "enk", "by_statement": "by Alfred H. Allen.", "works": [{"key": "/works/OL003W"}], "type": {"key": "/type/edition"}, "revision": 4}\n',  # noqa E501
+        '{"publishers": ["J. & A. Churchill"], "subtitle": "a treatise of decomposition", "covers": [5737156], "last_modified": {"type": "/type/datetime", "value": "2010-04-14T02:44:13.274395"}, "latest_revision": 4, "key": "/books/OL003M", "authors": [{"key": "/authors/OL2429124A"}], "ocaid": "backlink_diff_editions_same_work", "publish_places": ["London"], "pagination": "v. ;", "source_records": ["ia:backlink_diff_editions_same_work", "ia:commercialorgani04allerich", "ia:commercialorgani31allerich", "ia:commercialorgani32allerich", "ia:commercialorgani33allerich"], "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "title": "Commercial organic analysis", "edition_name": "2d ed., rev. and enl.", "subjects": ["Chemistry, Analytic", "Chemistry, Organic"], "publish_date": "1884", "publish_country": "enk", "by_statement": "by Alfred H. Allen.", "works": [{"key": "/works/OL003W"}], "type": {"key": "/type/edition"}, "revision": 4}\n',  # noqa E501
     ]
     lines = read_chunk_lines(chunk)
     next(lines)
@@ -89,7 +89,7 @@ def test_process_chunk_lines() -> None:
         "/books/OL003M",
         "4",
         "2010-04-14T02:44:13.274395",
-        '{"publishers": ["J. & A. Churchill"], "subtitle": "a treatise of decomposition", "covers": [5737156], "last_modified": {"type": "/type/datetime", "value": "2010-04-14T02:44:13.274395"}, "latest_revision": 4, "key": "/books/OL003M", "authors": [{"key": "/authors/OL2429124A"}], "ocaid": "ol_to_ia_to_ol_backlink_diff_editions_same_work", "publish_places": ["London"], "pagination": "v. ;", "source_records": ["ia:ol_to_ia_to_ol_backlink_diff_editions_same_work", "ia:commercialorgani04allerich", "ia:commercialorgani31allerich", "ia:commercialorgani32allerich", "ia:commercialorgani33allerich"], "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "title": "Commercial organic analysis", "edition_name": "2d ed., rev. and enl.", "subjects": ["Chemistry, Analytic", "Chemistry, Organic"], "publish_date": "1884", "publish_country": "enk", "by_statement": "by Alfred H. Allen.", "works": [{"key": "/works/OL003W"}], "type": {"key": "/type/edition"}, "revision": 4}\n',  # noqa E501
+        '{"publishers": ["J. & A. Churchill"], "subtitle": "a treatise of decomposition", "covers": [5737156], "last_modified": {"type": "/type/datetime", "value": "2010-04-14T02:44:13.274395"}, "latest_revision": 4, "key": "/books/OL003M", "authors": [{"key": "/authors/OL2429124A"}], "ocaid": "backlink_diff_editions_same_work", "publish_places": ["London"], "pagination": "v. ;", "source_records": ["ia:backlink_diff_editions_same_work", "ia:commercialorgani04allerich", "ia:commercialorgani31allerich", "ia:commercialorgani32allerich", "ia:commercialorgani33allerich"], "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "title": "Commercial organic analysis", "edition_name": "2d ed., rev. and enl.", "subjects": ["Chemistry, Analytic", "Chemistry, Organic"], "publish_date": "1884", "publish_country": "enk", "by_statement": "by Alfred H. Allen.", "works": [{"key": "/works/OL003W"}], "type": {"key": "/type/edition"}, "revision": 4}\n',  # noqa E501
     ]
     author = [
         "/type/author",
@@ -104,11 +104,11 @@ def test_process_chunk_lines() -> None:
     assert next(gen) == ("redirect", ("OL001M", "OL002M"))
     assert next(gen) == (
         "edition",
-        ("OL003M", "OL003W", "ol_to_ia_to_ol_backlink_diff_editions_same_work", 0, 1),
+        ("OL003M", "OL003W", "backlink_diff_editions_same_work", 0, 1),
     )
     assert next(gen) == (
         "edition",
-        ("OL003M", "OL003W", "ol_to_ia_to_ol_backlink_diff_editions_same_work", 0, 1),
+        ("OL003M", "OL003W", "backlink_diff_editions_same_work", 0, 1),
     )
 
 

@@ -73,10 +73,6 @@ def setup_db_full(tmp_path_factory) -> Iterator:
         db, "ol", "ol_edition_id", "resolved_ol_edition_id", redirect_db
     )
     update_redirected_ids(db, "ol", "ol_work_id", "resolved_ol_work_id", redirect_db)
-
-    # sql = """SELECT DISTINCT resolved_ol_edition_id, resolved_ol_work_id FROM ol"""
-    # editions_and_works = db.query(sql)
-    # create_resolved_edition_work_mapping(editions_and_works, map_db)
     create_resolved_edition_work_mapping(db, map_db)
 
     yield (db, redirect_db, map_db)
@@ -144,7 +140,7 @@ def test_build_ia_ol_edition_to_ol_work_column(setup_db_full):
     sql = """
     SELECT resolved_ia_ol_work_from_edition
     FROM   ia
-    WHERE  ia_id = "ol_to_ia_to_ol_backlink_diff_editions_same_work"
+    WHERE  ia_id = "backlink_diff_editions_same_work"
     """
     build_ia_ol_edition_to_ol_work_column(db, redirect_db, map_db)
     assert db.query(sql) == [("OL003W",)]

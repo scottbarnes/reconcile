@@ -1,12 +1,22 @@
 import configparser
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from lmdbm import Lmdb
 
 import reconcile.reports as reports
 from reconcile.database import Database
-from reconcile.main import create_ia_table, create_ol_table, resolve_redirects
+from reconcile.main import (
+    build_ia_ol_edition_to_ol_work_column,
+    copy_db_column,
+    create_ia_table,
+    create_ol_table,
+    create_redirects_db,
+    create_resolved_edition_work_mapping,
+    update_redirected_ids,
+)
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -63,9 +73,9 @@ def cleanup():
     yield
 
     # Cleanup
-    db_file = Path(SQLITE_DB)
-    if db_file.is_file():
-        db_file.unlink()
+    # db_file = Path(SQLITE_DB)
+    # if db_file.is_file():
+    #     db_file.unlink()
 
     error_file = Path(REPORT_ERRORS)
     if error_file.is_file():
@@ -77,34 +87,52 @@ def cleanup():
         file.unlink()
 
 
-@pytest.fixture()
-def setup_db():
+@pytest.fixture(scope="session")
+def setup_db(tmp_path_factory) -> Iterator:
     """
-    Setup the database table, populate Internet Archive data, and yield a
-    Database instance to use.
+    Setup a database to  use for the session
     """
-    db = Database(SQLITE_DB)
-    create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
-    # Specify a size to test chunking.
-    create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
-    yield db  # See the Database class
+    d = tmp_path_factory.mktemp("data")
+    sqlite_db = d / "sqlite.db"
+    redirectdb = d / "redirect.db"
+    mapdb = d / "edition_to_work_map.db"
+
+    # Get database connections
+    db = Database(sqlite_db)
+    redirect_db: Lmdb = Lmdb.open(str(redirectdb), "c")
+    map_db: Lmdb = Lmdb.open(str(mapdb), "c")
+
+    # Do initial database setup and data insertion.
+    create_ia_table(db)
+    create_ol_table(db)
+
+    create_redirects_db(redirect_db, OL_DUMP_PARSED_PREFIX)
+
+    print("Copying tables to save time when resolving the redirects.")
+    copy_db_column(db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id")
+    copy_db_column(db, "ol", "ol_work_id", "resolved_ol_work_id")
+    copy_db_column(db, "ol", "ol_edition_id", "resolved_ol_edition_id")
+    db.commit()
+
+    print("Resolving the redirects so there are consistent ID references.")
+    update_redirected_ids(
+        db, "ia", "ia_ol_work_id", "resolved_ia_ol_work_id", redirect_db
+    )
+    update_redirected_ids(db, "ol", "ol_work_id", "resolved_ol_work_id", redirect_db)
+    db.commit()
+
+    print("Creating the edition -> work mapping")
+    # TODO: needs status bar
+    create_resolved_edition_work_mapping(db, map_db)
+
+    print("Building the edition-> work table in ia")
+    # TODO: needs status bar
+    build_ia_ol_edition_to_ol_work_column(db, redirect_db, map_db)
+
+    yield (db)
 
 
-@pytest.fixture()
-def setup_db_with_redirects():
-    """
-    Setup the database table, populate Internet Archive data, and yield a
-    Database instance to use.
-    """
-    db = Database(SQLITE_DB)
-    create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
-    # Specify a size to test chunking.
-    create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
-    resolve_redirects()
-    yield db  # See the Database class
-
-
-def test_query_ol_id_differences(setup_db: Database):
+def test_query_ol_id_differences(setup_db):
     """
     Verify that broken backlinks from an Open Library edition to an Internet
     Archive record and back are properly detected.
@@ -115,11 +143,11 @@ def test_query_ol_id_differences(setup_db: Database):
     assert file.is_file() is True
     assert (
         file.read_text()
-        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\t\t\nenvironmentalhea00moel_0\tOL1000001M\tOL000001W\tOL1003612M\t\t\nol_to_ia_to_ol_backlink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\t\t\n"  # noqa E501
+        == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\tOL000000W\t\nenvironmentalhea00moel_0\tOL1000001M\tOL000001W\tOL1003612M\tOL000001W\t\nbacklink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\tOL003W\tOL003W\nbacklink_diff_editions_diff_work\tOL006M\tOL006W\tOL004M\tOL007W\t\nbacklink_diff_editions_diff_work_no_work_redirect\tOL008M\tOL008W\tOL009M\tOL008W\t\n"  # noqa E501
     )
 
 
-def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(setup_db: Database):
+def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(setup_db):
     """
     Verify that records where an Open Library edition has an Internet
     Archive OCAID but for that Internet Archive record there is no Open
@@ -134,7 +162,7 @@ def test_get_records_where_ol_has_ocaid_but_ia_has_no_ol_edition(setup_db: Datab
     assert file.read_text() == "jewishchristiand0000boys\tOL1001295M\n"
 
 
-def test_get_editions_with_multiple_works(setup_db: Database) -> None:
+def test_get_editions_with_multiple_works(setup_db) -> None:
     """
     Verify records with multiple works are located and written to disk.
     """
@@ -158,7 +186,7 @@ def test_get_ol_has_ocaid_but_ia_has_no_ol_edition_union(setup_db) -> None:
     assert file.read_text() == "jewishchristiand0000boys\tOL1001295M\n"
 
 
-def test_get_ia_links_to_ol_but_ol_edition_has_no_ocaid(setup_db: Database) -> None:
+def test_get_ia_links_to_ol_but_ol_edition_has_no_ocaid(setup_db) -> None:
     """
     Verify records where Internet Archive links to an Open Library Edition, but Open
     Library doesn't link back from that Edition, are written to a file.
@@ -178,7 +206,7 @@ def test_get_ia_links_to_ol_but_ol_edition_has_no_ocaid(setup_db: Database) -> N
     assert file.read_text() == "climbersguidetot00rope\tOL5214872M\n"
 
 
-def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) -> None:
+def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db) -> None:
     """
     Verify the script finds and records Open Library Editions with an OCAID record
     that do not have an 'ia:<ocaid>' record.
@@ -192,7 +220,7 @@ def test_get_ol_edition_has_ocaid_but_no_ia_source_record(setup_db: Database) ->
     assert file.read_text() == "guidetojohnmuirt0000star\tOL5756837M\n"
 
 
-def test_get_ia_with_same_ol_edition(setup_db: Database) -> None:
+def test_get_ia_with_same_ol_edition(setup_db) -> None:
     """
     Verify that Archive.org items with the same Open Library edition are reported.
     """
@@ -203,27 +231,31 @@ def test_get_ia_with_same_ol_edition(setup_db: Database) -> None:
     assert file.read_text() == "blobbook\tOL0000001M\ndifferentbook\tOL0000001M\n"
 
 
-# def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
-#     setup_db_with_redirects,
-# ) -> None:
-#     db = setup_db_with_redirects
-#     reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
-#         db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0
-#     )
-#     file = Path(REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0)
-#     assert file.is_file() is True
-#     assert "ol_to_ia_to_ol_backlink_diff_editions_same_work" not in file.read_text()
-#     assert "ol_to_ia_to_ol_backlink_diff_editions_diff_work" in file.read_text()
+def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
+    setup_db,
+) -> None:
+    db = setup_db
+    reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution0(
+        db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0
+    )
+    file = Path(REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION0)
+    assert file.is_file() is True
+    assert "backlink_diff_editions_diff_work" in file.read_text()
+    assert "backlink_diff_editions_same_work" not in file.read_text()
 
 
-# def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
-#     setup_db_with_redirects,
-# ) -> None:
-#     db = setup_db_with_redirects
-#     reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
-#         db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1
-#     )
-#     pass
+def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
+    setup_db,
+) -> None:
+    db = setup_db
+    reports.get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
+        db, REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1
+    )
+    file = Path(REPORT_BROKEN_OL_IA_BACKLINKS_AFTER_EDITION_TO_WORK_RESOLUTION1)
+    assert file.is_file() is True
+    assert "backlink_diff_editions_diff_work_no_work_redirect" in file.read_text()
+    assert "backlink_diff_editions_diff_work" in file.read_text()
+    assert "navigazionidiiac0000ramu" not in file.read_text()
 
 
 # def test_all_reports(setup_db) -> None:
