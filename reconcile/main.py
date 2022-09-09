@@ -1,5 +1,6 @@
 import configparser
 import csv
+import logging
 import multiprocessing as mp
 import sqlite3
 import sys
@@ -276,4 +277,9 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        filename="reconcile.log",
+        filemode="w",
+        format="%(asctime)s: %(name)s - %(levelname)s - %(message)s",
+    )
     app()

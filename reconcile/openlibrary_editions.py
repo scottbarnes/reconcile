@@ -12,7 +12,15 @@ from typing import Any
 import orjson
 from database import Database
 from tqdm import tqdm
-from utils import bufcount, get_bad_isbn_10s, get_bad_isbn_13s, nuller, record_errors
+
+from reconcile.types import ParsedEdition
+from reconcile.utils import (
+    bufcount,
+    get_bad_isbn_10s,
+    get_bad_isbn_13s,
+    nuller,
+    record_errors,
+)
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -47,23 +55,16 @@ def pre_create_ol_table_file_cleanup() -> None:
             p.unlink()
 
 
-def process_edition_line(
-    row: list[str],
-) -> tuple[str | None, str | None, str | None, int, int]:
+def process_edition_line(row: list[str]) -> ParsedEdition:
     """
     For each decoded line in the editions dump, process it to get values for insertion
     into the database.
 
     Input:
     ['/type/edition', '/books/OL10000149M', '2', '2010-03-11T23:51:36.723486', '{JSON}']
-
-    Output (all from the {JSON}):
-    (ol_edition_id, ol_work_id, ol_ocaid, has_multiple_works, has_ia_source_record)
-
-    :param list row: Items from a row of the Open Library editions dump.
     """
     # Annotate some variables to make this a bit cleaner. Maybe
-    ol_edition_id: str | None = None
+    ol_edition_id: str
     ol_ocaid: str | None = None
     ol_work_id: str | None = None
     has_multiple_works: int = 0  # No boolean in SQLite
@@ -99,12 +100,12 @@ def process_edition_line(
                 REPORT_BAD_ISBNS,
             )
 
-    return (
-        nuller(ol_edition_id),
-        nuller(ol_work_id),
-        nuller(ol_ocaid),
-        has_multiple_works,
-        has_ia_source_record,
+    return ParsedEdition(
+        edition_id=ol_edition_id,
+        work_id=ol_work_id,
+        ocaid=ol_ocaid,
+        has_multiple_works=has_multiple_works,
+        has_ia_source_record=has_ia_source_record,
     )
 
 
@@ -140,16 +141,16 @@ def insert_ol_data_in_ol_table(
                 for line in iter(mm.readline, b""):
                     row = line.decode("utf-8").split("\t")
                     # Convert empty strings to None because in CSV None is stored as "".
-                    row = [nuller(column) for column in row]
+                    nulled_row = [nuller(column) for column in row]
                     pbar.update(1)
-                    if len(row) != 5:
-                        record_errors(row, REPORT_ERRORS)
+                    if len(nulled_row) != 5:
+                        record_errors(nulled_row, REPORT_ERRORS)
                         continue
-                    row += (
+                    nulled_row += (
                         "",
                         "",
                     )  # Faster append of to-be-used columns.
-                    yield row
+                    yield nulled_row
 
     collection = get_ol_rows()
     db.execute("PRAGMA synchronous = OFF")

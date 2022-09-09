@@ -10,6 +10,7 @@ from reconcile import __version__
 from reconcile.database import Database
 from reconcile.main import create_ia_table, create_ol_table
 from reconcile.openlibrary_editions import process_edition_line
+from reconcile.types import ParsedEdition
 from reconcile.utils import (
     bufcount,
     get_bad_isbn_10s,
@@ -155,20 +156,30 @@ def test_process_line() -> None:
     ]
 
     assert process_edition_line(multi_works_source_rec) == (
-        "OL1002158M",
-        "OL1883432W",
-        "organizinggenius0000benn",
-        1,
-        1,
+        ParsedEdition(
+            edition_id="OL1002158M",
+            work_id="OL1883432W",
+            ocaid="organizinggenius0000benn",
+            has_multiple_works=1,
+            has_ia_source_record=1,
+        )
     )
     assert process_edition_line(noocaid_nomulti_no_ia) == (
-        "OL10000149M",
-        "OL14903292W",
-        None,
-        0,
-        0,
+        ParsedEdition(
+            edition_id="OL10000149M",
+            work_id="OL14903292W",
+            ocaid=None,
+            has_multiple_works=0,
+            has_ia_source_record=0,
+        )
     )
-    assert process_edition_line(no_work) == ("OL10000149M", None, None, 0, 0)
+    assert process_edition_line(no_work) == ParsedEdition(
+        edition_id="OL10000149M",
+        work_id=None,
+        ocaid=None,
+        has_multiple_works=0,
+        has_ia_source_record=0,
+    )
 
 
 def test_process_line_and_validate_isbn() -> None:

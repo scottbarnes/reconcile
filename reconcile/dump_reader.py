@@ -1,5 +1,6 @@
 import configparser
 import csv
+import logging
 import mmap
 import sys
 import uuid
@@ -7,8 +8,10 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from database import Database
-from openlibrary_editions import process_edition_line
-from redirect_resolver import process_redirect_line
+
+from reconcile.openlibrary_editions import process_edition_line
+from reconcile.redirect_resolver import process_redirect_line
+from reconcile.types import ParsedEdition, ParsedRedirect
 
 # Load configuration
 config = configparser.ConfigParser()
@@ -26,12 +29,13 @@ SCRUB_DATA = config.getboolean(CONF_SECTION, "scrub_data")
 
 
 db = Database()
+logger = logging.getLogger(__name__)
 
 
 def make_chunk_ranges(file_name: str, size: int) -> list[tuple[int, int, str]]:
     """
     Reads {file_name} in chunks of {size} bytes. Creates byte start/end/filepath
-    tuples so {file_name} can be read in chunks from index[0] to index[0] of each tuple.
+    tuples so {file_name} can be read in chunks from index[0] to index[1] of each tuple.
 
     Returns:
     start, end, filepath
@@ -60,8 +64,8 @@ def make_chunk_ranges(file_name: str, size: int) -> list[tuple[int, int, str]]:
 def read_chunk_lines(chunk: tuple[int, int, str]) -> Iterator[list[str]]:
     """
     Read a chunk and return its decoded line. Chunks are of the form:
-        [(start_byte, end_byte, 'patht_to_file'), (...)]. E.g.:
-        [(0, 32769146, '/path/to/file'), (32769146, 65538896, '/path/to/file')]
+    [(start_byte, end_byte, 'patht_to_file'), (...)]. E.g.:
+    [(0, 32769146, '/path/to/file'), (32769146, 65538896, '/path/to/file')]
     """
     start, end, file = chunk
     position = start
@@ -77,10 +81,13 @@ def read_chunk_lines(chunk: tuple[int, int, str]) -> Iterator[list[str]]:
             yield line.decode("utf-8").split("\t")
 
 
-def process_chunk_lines(lines: Iterable[list[str]]) -> Iterator[tuple[str, tuple]]:
+def process_chunk_lines(
+    lines: Iterable[list[str]],
+) -> Iterator[ParsedRedirect | ParsedEdition]:
     """
     Process {lines} as returned by read_chunk_lines(). Each line looks like:
-    ['/type/edition', '/books/OL5756837M', '9', '2021-03-13T21:28:42.954213', '{JSON}'  # noqa E501
+    ['/type/edition', '/books/OL5756837M', '9', 'datetimestmap', '{JSON}']
+    ['/type/redirect', '/authors/OL10219261A', '2', 'datetimestmap', '{"location": "/authors/OL3894951A"}']  # noqa E501
 
     Lines are then processed by their respective parsers, and a tuple is created to pass
     to the disk writer. E.g., for the above edition this will return:
@@ -90,24 +97,26 @@ def process_chunk_lines(lines: Iterable[list[str]]) -> Iterator[tuple[str, tuple
         match line[0]:
             case "/type/redirect":
                 try:
-                    output = process_redirect_line(line)
-                    if output:
-                        yield ("redirect", output)
+                    redirect = process_redirect_line(line)
+                    if redirect:
+                        yield redirect
                 except IndexError:
                     print(f"IndexError on: {line}")
                     continue
             case "/type/edition":
                 try:
-                    output = process_edition_line(line)
-                    yield ("edition", output)
+                    edition = process_edition_line(line)
+                    if edition:
+                        yield edition
                 except IndexError:
                     print(f"IndexError on: {line}")
                     continue
             case _:
+                logger.debug(f"{line} fell through process_chunk_lines()")
                 continue
 
 
-def write_processed_chunk_lines_to_disk(lines: Iterator, output_base: str) -> None:
+def write_processed_chunk_lines_to_disk(lines: Iterable, output_base: str) -> None:
     """
     Iterate through {lines} from process_chunk_lines() and write the lines to the
     relevant file based on the Open Library type found at index 0 of the tuple.
@@ -129,13 +138,16 @@ def write_processed_chunk_lines_to_disk(lines: Iterator, output_base: str) -> No
         redirect_writer = csv.writer(redirect_fp, delimiter="\t")
 
         for line in lines:
-            match line[0]:
-                case "edition":
-                    edition_writer.writerow(line[1])
-                case "redirect":
-                    redirect_writer.writerow(line[1])
+            match line:
+                case ParsedEdition():
+                    edition_writer.writerow(line.to_list())
+                case ParsedRedirect():
+                    redirect_writer.writerow(line.to_list())
                 case _:
-                    pass
+                    logger.warning(
+                        f"{line} fell through write_processed_chunk_lines_to_disk()"
+                    )
+                    continue
 
 
 def process_chunk(

@@ -8,6 +8,8 @@ import orjson
 from lmdbm import Lmdb
 from utils import batcher
 
+from reconcile.types import ParsedRedirect
+
 """
 Functions to resolve redirects and put them in a key/value store.
 """
@@ -19,7 +21,7 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 
 
-def process_redirect_line(line: list[str]) -> tuple[str, str] | None:
+def process_redirect_line(line: list[str]) -> ParsedRedirect | None:
     """
     Read a line of the full dump and pull out the redirect keys and values for use in
     making a key-value store of redirects.
@@ -31,15 +33,15 @@ def process_redirect_line(line: list[str]) -> tuple[str, str] | None:
     the redirector_id, and the second item is the destination_id.
     ("OL001M", "OL002M")
     """
-    key = line[1].split("/")[-1]
+    origin_id = line[1].split("/")[-1]
 
     # Only process editions and works.
-    if not key.endswith(("W", "M")):
+    if not origin_id.endswith(("W", "M")):
         return None
 
     d = orjson.loads(line[4])
-    value = d.get("location", "").split("/")[-1]
-    return (key, value)
+    destination_id = d.get("location", "").split("/")[-1]
+    return ParsedRedirect(origin_id=origin_id, destination_id=destination_id)
 
 
 def create_redirects_db(dict_db: Lmdb, base_filename: str) -> None:

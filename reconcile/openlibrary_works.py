@@ -2,6 +2,7 @@
 Functions for working with Open Library works.
 """
 import csv
+import logging
 import tempfile
 from collections.abc import Iterator
 from typing import IO
@@ -10,6 +11,8 @@ from database import Database
 from lmdbm import Lmdb
 from tqdm import tqdm
 from utils import batcher
+
+logger = logging.getLogger(__name__)
 
 
 def copy_db_column(db: Database, table: str, from_column: str, to_column: str):
@@ -161,6 +164,7 @@ def get_ocaid_and_resolved_ia_work_from_edition(
 
     for ocaid, edition in tqdm(reader):
         if not edition:
+            logging.warning(f"No edition found for IA OCAID {ocaid}")
             continue
 
         try:
