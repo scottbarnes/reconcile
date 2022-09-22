@@ -70,7 +70,7 @@ def extract_gzip(file: str) -> str:
 
 
 def get_ia_dump_urls(
-    dt: datetime.date, count: int, initial: bool = True, urls: list[str] = None
+    urls: list[str], dt: datetime.date, count: int, initial: bool = True
 ) -> list[str]:
     """
     There doesn't seem to be a 'latest' file for the IA
@@ -100,7 +100,7 @@ def get_ia_dump_urls(
         prior_month_parsed = prior_month.strftime("%Y%m%d")
         url = URL_PREFIX + prior_month_parsed + URL_SUFFIX
         urls.append(url)
-        return get_ia_dump_urls(prior_month, count - 1, False, urls)
+        return get_ia_dump_urls(urls, prior_month, count - 1, False)
 
     # First pass. Use the passed dt and set it to the first. Use this to build
     # the first URL to try. Call again and decrement {count}.
@@ -109,7 +109,7 @@ def get_ia_dump_urls(
         first_parsed = first.strftime("%Y%m%d")
         url = URL_PREFIX + first_parsed + URL_SUFFIX
         urls.append(url)
-        return get_ia_dump_urls(first, count - 1, False, urls)
+        return get_ia_dump_urls(urls, first, count - 1, False)
 
 
 @app.command()
@@ -127,7 +127,7 @@ def fetch_data(show_prompt: bool = True) -> None:
     # Get The three most recent possible URLs for the IA
     # _physical_direct_direct.tsv
     today = datetime.date.today()
-    IA_PHYSICAL_DIRECT_DUMP_URLS = get_ia_dump_urls(today, 3)
+    IA_PHYSICAL_DIRECT_DUMP_URLS = get_ia_dump_urls([], today, 3)
 
     # Prompt whether to continue. Use --show_prompt=False to skip.
     cwd = os.getcwd()

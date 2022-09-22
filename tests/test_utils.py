@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from reconcile.utils import (
+    batcher,
     bufcount,
     get_bad_isbn_10s,
     get_bad_isbn_13s,
@@ -86,3 +87,15 @@ def test_record_errors() -> None:
     record_errors("some test error", filename)
     assert "some test error" in p.read_text()
     p.unlink()
+
+
+def test_batcher() -> None:
+    """
+    Verify batcher batches items by {count}, however they're formed, and that if there
+    are fewer than {count} items in the last batch, they're still returned.
+    """
+    ol_ids = iter(["OL1M", "OL2M", ("OL3M", "OL4M"), "OL5M", "OL6M"])
+    batch = batcher(ol_ids, 2)
+    assert next(batch) == ("OL1M", "OL2M")
+    assert next(batch) == (("OL3M", "OL4M"), "OL5M")
+    assert next(batch) == ("OL6M",)

@@ -116,7 +116,9 @@ def process_chunk_lines(
                 continue
 
 
-def write_processed_chunk_lines_to_disk(lines: Iterable, output_base: str) -> None:
+def write_processed_chunk_lines_to_disk(
+    lines: Iterable[ParsedEdition | ParsedRedirect], output_base: str
+) -> None:
     """
     Iterate through {lines} from process_chunk_lines() and write the lines to the
     relevant file based on the Open Library type found at index 0 of the tuple.

@@ -12,13 +12,13 @@ class ParsedRedirect:
     origin_id: str
     destination_id: str
 
-    def to_list(self):
+    def to_list(self) -> list[str]:
         return [self.origin_id, self.destination_id]
 
 
 @dataclass(frozen=True, slots=True)
 class ParsedEdition:
-    """A EDITION as parsed from the Open Library 'all' dump."""
+    """An EDITION as parsed from the Open Library 'all' dump."""
 
     edition_id: str
     work_id: str | None = None
@@ -26,7 +26,7 @@ class ParsedEdition:
     has_multiple_works: int = 0
     has_ia_source_record: int = 0
 
-    def to_list(self):
+    def to_list(self) -> list[str | int | None]:
         return [
             self.edition_id,
             self.work_id,

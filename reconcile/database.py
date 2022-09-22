@@ -29,10 +29,10 @@ class Database:
         self._conn = sqlite3.connect(name, timeout=60)
         self._cursor = self._conn.cursor()
 
-    def __enter__(self):
+    def __enter__(self):  # type: ignore[no-untyped-def]
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb):  # type: ignore[no-untyped-def]
         self.close()
 
     @property
@@ -43,18 +43,20 @@ class Database:
     def cursor(self) -> sqlite3.Cursor:
         return self._cursor
 
-    def commit(self):
+    def commit(self) -> None:
         self.connection.commit()
 
-    def close(self, commit: bool = True):
+    def close(self, commit: bool = True) -> None:
         if commit:
             self.commit()
         self.connection.close()
 
-    def execute(self, sql: str, params: tuple = None):
+    def execute(self, sql: str, params: tuple[str] | None = None) -> None:
         self.cursor.execute(sql, params or ())
 
-    def executemany(self, sql: str, params: tuple | Iterable | None = None):
+    def executemany(
+        self, sql: str, params: tuple[str] | Iterable[str] | None = None
+    ) -> None:
         self.cursor.executemany(sql, params or ())
 
     def fetchall(self) -> list[Any]:
@@ -63,7 +65,7 @@ class Database:
     def fetchone(self) -> Any:
         return self.cursor.fetchone()
 
-    def query(self, sql, params=None) -> list[Any]:
+    def query(self, sql: str, params: tuple[str] | None = None) -> list[Any]:
         self.cursor.execute(sql, params or ())
         return self.fetchall()
 

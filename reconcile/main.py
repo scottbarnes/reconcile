@@ -125,7 +125,7 @@ def create_ol_table(
     db: Database,
     filename: str = OL_ALL_DUMP,
     size: int = 1024 * 1024 * 1024,
-):
+) -> None:
     """
     Parse the (uncompressed) Open Library editions dump named {filename} and insert
     it into {db}.
@@ -222,7 +222,7 @@ def all_reports() -> None:
 
 
 @app.command()
-def resolve_redirects():
+def resolve_redirects() -> None:
     """
     Resolve the Open Library redirect type to create {redirect_db}, a key-value database
     for looking up redirects, and {map_db}, a key-value store of arbitrary editions and
@@ -265,7 +265,7 @@ def resolve_redirects():
 
 
 @app.callback()
-def main():
+def main() -> None:
     """
     The order to run these in: (1) fetch, (2) create-db, and (3) all-reports
 

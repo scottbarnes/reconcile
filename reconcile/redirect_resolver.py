@@ -58,7 +58,9 @@ def create_redirects_db(dict_db: Lmdb, base_filename: str) -> None:
     path = Path(base_filename)
     files = Path(FILES_DIR).glob(f"{path.stem}_redirect_*{path.suffix}")
 
-    def get_redirects_from_disk(files: Generator) -> Iterator[tuple[str, str]]:
+    def get_redirects_from_disk(
+        files: Generator[Path, None, None]
+    ) -> Iterator[tuple[str, str]]:
         """Read from disk, process, create generator for use in batching."""
         for file in files:
             with file.open(mode="r+b") as fp:

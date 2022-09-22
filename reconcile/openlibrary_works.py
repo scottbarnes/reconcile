@@ -5,7 +5,7 @@ import csv
 import logging
 import tempfile
 from collections.abc import Iterator
-from typing import IO
+from typing import IO, cast
 
 from database import Database
 from lmdbm import Lmdb
@@ -15,7 +15,7 @@ from utils import batcher
 logger = logging.getLogger(__name__)
 
 
-def copy_db_column(db: Database, table: str, from_column: str, to_column: str):
+def copy_db_column(db: Database, table: str, from_column: str, to_column: str) -> None:
     """Copy {from_column} to {to_column} on {table} in {db}."""
     db.execute(f"UPDATE {table} SET {to_column} = {from_column}")
     db.commit()
@@ -143,7 +143,7 @@ def get_resolved_work_from_edition(
         current_id = redirected_id
 
     if work_id := map_db.get(final_id):
-        return work_id.decode()
+        return cast(str, work_id.decode())
     raise KeyError
 
 

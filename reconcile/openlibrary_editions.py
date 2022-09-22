@@ -174,7 +174,7 @@ def update_ia_editions_from_parsed_tsvs(
     lines = [bufcount(f) for f in files]
     total = sum(lines)
 
-    def get_ol_ia_pairs():
+    def get_ol_ia_pairs() -> Iterator[tuple[str, str]]:
         """
         From the parsed OL data, find edition_id and ocaid pairs.
         Format is:
