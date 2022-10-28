@@ -26,11 +26,13 @@ from redirect_resolver import create_redirects_db
 from tqdm import tqdm
 from utils import bufcount, nuller, path_check
 
+from reconcile.internet_archive import parse_ia_inlibrary_jsonl
 from reports import (
     get_broken_ol_ia_backlinks_after_edition_to_work_resolution0,
     get_broken_ol_ia_backlinks_after_edition_to_work_resolution1,
     get_editions_with_multiple_works,
     get_ia_links_to_ol_but_ol_edition_has_no_ocaid,
+    get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl,
     get_ia_with_same_ol_edition_id,
     get_ol_edition_has_ocaid_but_no_ia_source_record,
     get_ol_has_ocaid_but_ia_has_no_ol_edition,
@@ -45,6 +47,7 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
+IA_INLIBRARY_JSONL_DUMP = config.get(CONF_SECTION, "ia_inlibrary_jsonl_dump")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
 OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
@@ -121,6 +124,45 @@ def create_ia_table(db: Database, ia_dump_path: str = IA_PHYSICAL_DIRECT_DUMP) -
     db.commit()
 
 
+def create_ia_jsonl_table(
+    db: Database, ia_dump_path: str = IA_INLIBRARY_JSONL_DUMP
+) -> None:
+    """
+    Create the `ia_jsonl` table in {db} and populate it with data from
+    [date]_inlibrary_direct.tsv from Internet Archive.
+    Dump available from https://archive.org/download/ia-abc-historical-data.
+
+    This data is INSERTed first and therefore doesn't rely on anything else being in
+    there.
+    """
+    try:
+        db.execute(
+            "CREATE TABLE ia_jsonl (rowid INTEGER PRIMARY KEY, ocaid TEXT, \
+                ol_edition_id TEXT, sole_isbn_13 INTEGER, isbn_13 TEXT, info TEXT NOT NULL)"
+        )
+    except sqlite3.OperationalError as err:
+        print(f"SQLite error: {err}")
+        print(f"You may need to delete {SQLITE_DB}.")
+        sys.exit(1)
+
+    # Populate the DB with IA physical direct dump data.
+    dump_file = Path(ia_dump_path)
+    if not dump_file.is_file():
+        print(f"Cannot find {ia_dump_path}.")
+        print("Either `fetch-data` or check `ia_inlibrary_jsonl_dump` in setup.cfg")
+        typer.Exit(1)
+
+    print("Parsing and inserting the Internet Archive JSONL data.")
+    db.executemany(
+        "INSERT INTO ia_jsonl (ocaid, ol_edition_id, sole_isbn_13, isbn_13, info) \
+                VALUES (?, ?, ?, ?, ?)",
+        parse_ia_inlibrary_jsonl(IA_INLIBRARY_JSONL_DUMP),
+    )
+
+    db.execute("CREATE INDEX idx_ia_jsonl ON ia_jsonl((info->>'identifier'))")
+    db.commit()
+
+
 def create_ol_table(
     db: Database,
     filename: str = OL_ALL_DUMP,
@@ -151,7 +193,7 @@ def create_ol_table(
     try:
         db.execute(
             "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
-             ol_ocaid TEXT, has_multiple_works INTEGER, \
+             ol_ocaid TEXT, isbn_13 TEXT, has_multiple_works INTEGER, \
              has_ia_source_record INTEGER, resolved_ol_edition_id TEXT, \
              resolved_ol_work_id TEXT)"
         )
@@ -187,6 +229,7 @@ def create_db() -> None:
     """Create the tables and insert the data. NOTE: You must fetch the data first."""
     db = Database()
     create_ia_table(db)
+    create_ia_jsonl_table(db)
     create_ol_table(db)
 
 
@@ -207,6 +250,8 @@ def all_reports() -> None:
         get_ol_has_ocaid_but_ia_has_no_ol_edition_join(db)
         print("\n")
         get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
+        print("\n")
+        get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(db)
         print("\n")
         get_ia_with_same_ol_edition_id(db)
         print("\n")

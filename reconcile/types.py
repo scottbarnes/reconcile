@@ -23,6 +23,7 @@ class ParsedEdition:
     edition_id: str
     work_id: str | None = None
     ocaid: str | None = None
+    isbn_13: str = ""
     has_multiple_works: int = 0
     has_ia_source_record: int = 0
 
@@ -31,6 +32,7 @@ class ParsedEdition:
             self.edition_id,
             self.work_id,
             self.ocaid,
+            self.isbn_13,
             self.has_multiple_works,
             self.has_ia_source_record,
         ]

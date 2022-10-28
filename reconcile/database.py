@@ -144,6 +144,29 @@ class Database:
         """
         return self.query(sql)
 
+    def get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(self) -> list[Any]:
+        """
+        Get records where Internet Archive links to an Open Library Edition, but that
+        Open Library Edition has no OCAID.
+        """
+        # sql = """
+        # SELECT ia_jsonl.info ->> 'openlibrary_edition',
+        #        ia_jsonl.info ->> 'identifier'
+        # FROM   ia_jsonl
+        #        INNER JOIN ol
+        #                ON ol.ol_edition_id = ia_jsonl.info ->> 'openlibrary_edition'
+        # WHERE  ol.ol_ocaid IS NULL
+        # """
+        sql = """
+        SELECT ol.ol_edition_id,
+               ia_jsonl.ocaid
+        FROM   ia_jsonl
+               INNER JOIN ol
+                    ON ia_jsonl.ol_edition_id = ol.ol_edition_id
+        WHERE  ol.ol_ocaid IS NULL and ia_jsonl.sole_isbn_13 is 1 and ol.isbn_13 = ia_jsonl.isbn_13
+        """
+        return self.query(sql)
+
     def get_ol_edition_has_ocaid_but_no_ia_source_record(self) -> list[Any]:
         """
         Get records where an Open Library Edition has an OCAID but the source_record

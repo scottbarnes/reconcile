@@ -13,7 +13,15 @@ def test_parse_edition_returns_list():
         edition_id="OL001M",
         work_id="OL001W",
         ocaid="johnmuirtrail",
+        isbn_13="1234567890123",
         has_multiple_works=0,
         has_ia_source_record=1,
     )
-    assert edition.to_list() == ["OL001M", "OL001W", "johnmuirtrail", 0, 1]
+    assert edition.to_list() == [
+        "OL001M",
+        "OL001W",
+        "johnmuirtrail",
+        "1234567890123",
+        0,
+        1,
+    ]

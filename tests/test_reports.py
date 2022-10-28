@@ -11,6 +11,7 @@ from reconcile.database import Database
 from reconcile.main import (
     build_ia_ol_edition_to_ol_work_column,
     copy_db_column,
+    create_ia_jsonl_table,
     create_ia_table,
     create_ol_table,
     create_redirects_db,
@@ -25,6 +26,7 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
+IA_INLIBRARY_JSONL_DUMP = config.get(CONF_SECTION, "ia_inlibrary_jsonl_dump")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
 OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
@@ -104,6 +106,7 @@ def setup_db(tmp_path_factory) -> Iterator:
 
     # Do initial database setup and data insertion.
     create_ia_table(db)
+    create_ia_jsonl_table(db)
     create_ol_table(db)
 
     create_redirects_db(redirect_db, OL_DUMP_PARSED_PREFIX)
@@ -144,6 +147,21 @@ def test_query_ol_id_differences(setup_db):
     assert (
         file.read_text()
         == "jesusdoctrineofa0000heye\tOL1000000M\tOL000000W\tOL1003296M\tOL000000W\t\nenvironmentalhea00moel_0\tOL1000001M\tOL000001W\tOL1003612M\tOL000001W\t\nbacklink_diff_editions_same_work\tOL001M\tOL001W\tOL003M\tOL003W\tOL003W\nbacklink_diff_editions_diff_work\tOL006M\tOL006W\tOL004M\tOL007W\t\nbacklink_diff_editions_diff_work_no_work_redirect\tOL008M\tOL008W\tOL009M\tOL008W\t\n"  # noqa E501
+    )
+
+
+def test_query_ol_does_not_link_to_ia_but_ia_links_to_ol_and_has_one_isbn_13(
+    setup_db,
+) -> None:
+    db = setup_db
+    reports.get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(
+        db, reports.REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL
+    )
+    file = Path(reports.REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL)
+    assert file.is_file() is True
+    # Should only have the one result
+    assert (
+        file.read_text() == "OL010M\tlinks_to_ol_edition_but_ol_does_not_link_to_it\n"
     )
 
 

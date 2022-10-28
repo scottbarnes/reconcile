@@ -11,6 +11,7 @@ from typing import Any
 
 import orjson
 from database import Database
+from isbnlib import to_isbn13
 from tqdm import tqdm
 
 from reconcile.types import ParsedEdition
@@ -100,10 +101,19 @@ def process_edition_line(row: list[str]) -> ParsedEdition:
                 REPORT_BAD_ISBNS,
             )
 
+    # Attempt to get one ISBN for comparison with Internet Archive items.
+    isbns = set(isbn_13s or {})
+    isbns.update({to_isbn13(isbn) for isbn in isbn_10s or {}})
+    try:
+        isbn_13 = isbns.pop()
+    except KeyError:
+        isbn_13 = ""
+
     return ParsedEdition(
         edition_id=ol_edition_id,
         work_id=ol_work_id,
         ocaid=ol_ocaid,
+        isbn_13=isbn_13,
         has_multiple_works=has_multiple_works,
         has_ia_source_record=has_ia_source_record,
     )
@@ -128,11 +138,11 @@ def insert_ol_data_in_ol_table(
         Read {filename} in TSV format, decode the lines, and yield them.
         Format of decoded line:
         edition_id, work_id, ocaid, has_multiple_works, has_ia_source_record,
-        resolved_work_id
-        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi    0   1  ""
+        resolved_work_id, isbn_13
+        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi  012345678X  0  1  ""
 
         Returns the same data as a list, but everything is a string (or None).
-        ["OL12459902M", "OL9945028W", "mafamillemitterr0000cahi", "0", "1", None]
+        ["OL12459902M", "OL9945028W", "mafamillemitterr0000cahi", "012345678X", "0", "1", None]
         """
         pbar = tqdm(total=total)
         for file in files:
@@ -143,7 +153,7 @@ def insert_ol_data_in_ol_table(
                     # Convert empty strings to None because in CSV None is stored as "".
                     nulled_row = [nuller(column) for column in row]
                     pbar.update(1)
-                    if len(nulled_row) != 5:
+                    if len(nulled_row) != 6:
                         record_errors(nulled_row, REPORT_ERRORS)
                         continue
                     nulled_row += (
@@ -154,7 +164,7 @@ def insert_ol_data_in_ol_table(
 
     collection = get_ol_rows()
     db.execute("PRAGMA synchronous = OFF")
-    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?, ?)", collection)
+    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?, ?, ?)", collection)
     db.commit()
 
 
@@ -178,8 +188,8 @@ def update_ia_editions_from_parsed_tsvs(
         """
         From the parsed OL data, find edition_id and ocaid pairs.
         Format is:
-        edition_id, work_id, ocaid, has_multiple_works, has_ia_source_record
-        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi    0   1
+        edition_id, work_id, ocaid, isbn_13, has_multiple_works, has_ia_source_record
+        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi  012345678X  0  1
         """
         pbar = tqdm(total=total)
         for file in files:

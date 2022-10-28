@@ -147,7 +147,7 @@ def test_write_processed_chunk_lines_to_disk() -> None:
     path = Path(OL_DUMP_PARSED_PREFIX)
     files = list(Path(FILES_DIR).glob(f"{path.stem}*{path.suffix}"))
 
-    edition = "OL1002158M\tOL1883432W\torganizinggenius0000benn\t1\t1"
+    edition = "OL1002158M\tOL1883432W\torganizinggenius0000benn\t9780201570519\t1\t1"
     redirect = "OL001M\tOL002M"
     assert any(edition in file.read_text() for file in files) is True
     assert any(redirect in file.read_text() for file in files) is True

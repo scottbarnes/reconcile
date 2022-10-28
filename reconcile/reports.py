@@ -25,6 +25,9 @@ REPORT_EDITIONS_WITH_MULTIPLE_WORKS = config.get(
 REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = config.get(
     CONF_SECTION, "report_ia_links_to_ol_but_ol_edition_has_no_ocaid"
 )
+REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL = config.get(
+    CONF_SECTION, "report_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl"
+)
 REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
     CONF_SECTION, "report_ol_edition_has_ocaid_but_no_source_record"
 )
@@ -141,6 +144,22 @@ def get_ia_links_to_ol_but_ol_edition_has_no_ocaid(
     """
     message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID"  # noqa E501
     result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid()
+    process_result(result, out_file, message)
+
+
+def get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(
+    db: Database,
+    out_file: str = REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL,
+) -> None:
+    """
+    Get Internet Archive OCAIDs and corresponding Open Library Edition IDs where
+    Internet Archive links to an Open Library Edition, but the Edition has no OCAID.
+
+    :param Database: an instance of the database.py class.
+    :param str out_file: path to the report output.
+    """
+    message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID (per the JSONL dump, ensuring the IA item has only one ISBN 13)"  # noqa E501
+    result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl()
     process_result(result, out_file, message)
 
 

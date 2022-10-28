@@ -8,7 +8,7 @@ import pytest
 
 from reconcile import __version__
 from reconcile.database import Database
-from reconcile.main import create_ia_table, create_ol_table
+from reconcile.main import create_ia_jsonl_table, create_ia_table, create_ol_table
 from reconcile.openlibrary_editions import process_edition_line
 from reconcile.types import ParsedEdition
 from reconcile.utils import (
@@ -26,6 +26,7 @@ CONF_SECTION = "reconcile-test" if "pytest" in sys.modules else "reconcile"
 FILES_DIR = config.get(CONF_SECTION, "files_dir")
 REPORTS_DIR = config.get(CONF_SECTION, "reports_dir")
 IA_PHYSICAL_DIRECT_DUMP = config.get(CONF_SECTION, "ia_physical_direct_dump")
+IA_INLIBRARY_JSONL_DUMP = config.get(CONF_SECTION, "ia_inlibrary_jsonl_dump")
 OL_ALL_DUMP = config.get(CONF_SECTION, "ol_all_dump")
 OL_DUMP_PARSED_PREFIX = config.get(CONF_SECTION, "ol_dump_parse_prefix")
 SQLITE_DB = config.get(CONF_SECTION, "sqlite_db")
@@ -100,6 +101,7 @@ def setup_db():
     """
     db = Database(SQLITE_DB)
     create_ia_table(db, IA_PHYSICAL_DIRECT_DUMP)
+    create_ia_jsonl_table(db, IA_INLIBRARY_JSONL_DUMP)
     # Specify a size to test chunking.
     create_ol_table(db, OL_ALL_DUMP, size=15_000)  # Size must be identical everywhere.
     yield db  # See the Database class
@@ -123,8 +125,48 @@ def test_create_db_inserts_data() -> None:
 
     db.execute("""SELECT * FROM ol WHERE ol_edition_id = 'OL1002158M'""")
     assert db.fetchall() == [
-        ("OL1002158M", "OL1883432W", "organizinggenius0000benn", 1, 1, "", "")
+        (
+            "OL1002158M",
+            "OL1883432W",
+            "organizinggenius0000benn",
+            "9780201570519",
+            1,
+            1,
+            "",
+            "",
+        )
     ]
+
+
+def test_get_items_from_ia_jsonl_table(setup_db) -> None:
+    db = setup_db
+    line1 = (
+        1,
+        "links_to_ol_edition_but_ol_does_not_link_to_it",
+        "OL010M",
+        1,
+        "9781933060224",
+        '{"identifier": "links_to_ol_edition_but_ol_does_not_link_to_it", "isbn": ["1933060220", "9781933060224"], "openlibrary_work": "OL010W", "openlibrary_edition": "OL010M"}\n',  # noqa E501
+    )
+    line2 = (
+        2,
+        "links_both_ways",
+        "OL011M",
+        1,
+        "9781451675504",
+        '{"identifier": "links_both_ways", "isbn": ["9781451675504", "145167550X"], "openlibrary_work": "OL011W", "openlibrary_edition": "OL011M"}\n',  # noqa E501
+    )
+    line3 = (
+        3,
+        "links_to_ol_edition_but_ol_does_not_link_to_it_two_isbn_13",
+        "OL012M",
+        0,
+        "9781933060224",
+        '{"identifier": "links_to_ol_edition_but_ol_does_not_link_to_it_two_isbn_13", "isbn": ["1933060220", "9781933060224", "9781566199094"], "openlibrary_work": "OL012W", "openlibrary_edition": "OL012M"}\n',  # noqa E501
+    )
+
+    db.execute("""SELECT * FROM ia_jsonl""")
+    assert db.fetchall() == [line1, line2, line3]
 
 
 def test_process_line() -> None:
@@ -160,6 +202,7 @@ def test_process_line() -> None:
             edition_id="OL1002158M",
             work_id="OL1883432W",
             ocaid="organizinggenius0000benn",
+            isbn_13="9780201570519",
             has_multiple_works=1,
             has_ia_source_record=1,
         )
@@ -169,6 +212,7 @@ def test_process_line() -> None:
             edition_id="OL10000149M",
             work_id="OL14903292W",
             ocaid=None,
+            isbn_13="9780107805548",
             has_multiple_works=0,
             has_ia_source_record=0,
         )
@@ -177,6 +221,7 @@ def test_process_line() -> None:
         edition_id="OL10000149M",
         work_id=None,
         ocaid=None,
+        isbn_13="9780107805548",
         has_multiple_works=0,
         has_ia_source_record=0,
     )
