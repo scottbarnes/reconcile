@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 from lmdbm import Lmdb
 
+from reconcile.datatypes import ParsedRedirect
 from reconcile.redirect_resolver import (  # read_file_linearly,
     create_redirects_db,
     process_redirect_line,
 )
-from reconcile.types import ParsedRedirect
 
 # Load configuration
 config = configparser.ConfigParser()

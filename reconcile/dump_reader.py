@@ -9,9 +9,9 @@ from pathlib import Path
 
 from database import Database
 
+from reconcile.datatypes import ParsedEdition, ParsedRedirect
 from reconcile.openlibrary_editions import process_edition_line
 from reconcile.redirect_resolver import process_redirect_line
-from reconcile.types import ParsedEdition, ParsedRedirect
 
 # Load configuration
 config = configparser.ConfigParser()

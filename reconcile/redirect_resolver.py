@@ -8,7 +8,7 @@ import orjson
 from lmdbm import Lmdb
 from utils import batcher
 
-from reconcile.types import ParsedRedirect
+from reconcile.datatypes import ParsedRedirect
 
 """
 Functions to resolve redirects and put them in a key/value store.

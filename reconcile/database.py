@@ -163,7 +163,37 @@ class Database:
         FROM   ia_jsonl
                INNER JOIN ol
                     ON ia_jsonl.ol_edition_id = ol.ol_edition_id
-        WHERE  ol.ol_ocaid IS NULL and ia_jsonl.sole_isbn_13 is 1 and ol.isbn_13 = ia_jsonl.isbn_13
+        WHERE  ol.ol_ocaid IS NULL and ia_jsonl.sole_isbn_13 is 1
+        """
+        # WHERE  ol.ol_ocaid IS NULL and ia_jsonl.sole_isbn_13 is 1 and ol.isbn_13 = ia_jsonl.isbn_13
+        return self.query(sql)
+
+    def get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple(
+        self,
+    ) -> list[Any]:
+        """
+        Get records where Internet Archive links to an Open Library Edition, but that
+        Open Library Edition has no OCAID. And that have multiple ISBN 13s.
+        """
+        sql = """
+        SELECT ol.ol_edition_id,
+               ia_jsonl.ocaid
+        FROM   ia_jsonl
+               INNER JOIN ol
+                    ON ia_jsonl.ol_edition_id = ol.ol_edition_id
+        WHERE  ol.ol_ocaid IS NULL and ia_jsonl.multiple_isbn_13 is 1
+        """
+        return self.query(sql)
+
+    def get_ia_item_has_one_isbn_13_and_no_link_to_ol(self) -> list[Any]:
+        """
+        Get records where Internet Archive has one ISBN 13 and there is no link to Open Library.
+        Does this need to limit the collection?
+        """
+        sql = """
+        SELECT ia_jsonl.ocaid
+        FROM ia_jsonl
+        WHERE ia_jsonl.sole_isbn_13 IS 1 AND ia_jsonl.ol_edition_id IS NULL OR ia_jsonl.ol_edition_id IS ""
         """
         return self.query(sql)
 

@@ -8,9 +8,9 @@ import pytest
 
 from reconcile import __version__
 from reconcile.database import Database
+from reconcile.datatypes import ParsedEdition
 from reconcile.main import create_ia_jsonl_table, create_ia_table, create_ol_table
 from reconcile.openlibrary_editions import process_edition_line
-from reconcile.types import ParsedEdition
 from reconcile.utils import (
     bufcount,
     get_bad_isbn_10s,
@@ -145,6 +145,7 @@ def test_get_items_from_ia_jsonl_table(setup_db) -> None:
         "links_to_ol_edition_but_ol_does_not_link_to_it",
         "OL010M",
         1,
+        0,
         "9781933060224",
         '{"identifier": "links_to_ol_edition_but_ol_does_not_link_to_it", "isbn": ["1933060220", "9781933060224"], "openlibrary_work": "OL010W", "openlibrary_edition": "OL010M"}\n',  # noqa E501
     )
@@ -153,6 +154,7 @@ def test_get_items_from_ia_jsonl_table(setup_db) -> None:
         "links_both_ways",
         "OL011M",
         1,
+        0,
         "9781451675504",
         '{"identifier": "links_both_ways", "isbn": ["9781451675504", "145167550X"], "openlibrary_work": "OL011W", "openlibrary_edition": "OL011M"}\n',  # noqa E501
     )
@@ -161,12 +163,13 @@ def test_get_items_from_ia_jsonl_table(setup_db) -> None:
         "links_to_ol_edition_but_ol_does_not_link_to_it_two_isbn_13",
         "OL012M",
         0,
+        1,
         "9781933060224",
         '{"identifier": "links_to_ol_edition_but_ol_does_not_link_to_it_two_isbn_13", "isbn": ["1933060220", "9781933060224", "9781566199094"], "openlibrary_work": "OL012W", "openlibrary_edition": "OL012M"}\n',  # noqa E501
     )
 
     db.execute("""SELECT * FROM ia_jsonl""")
-    assert db.fetchall() == [line1, line2, line3]
+    assert db.fetchall()[:3] == [line1, line2, line3]
 
 
 def test_process_line() -> None:

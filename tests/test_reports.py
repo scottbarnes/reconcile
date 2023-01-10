@@ -276,6 +276,19 @@ def test_get_broken_ol_ia_backlinks_after_edition_to_work_resolution1(
     assert "navigazionidiiac0000ramu" not in file.read_text()
 
 
+def test_get_ia_has_one_isbn_13_and_no_links_to_ol(
+    setup_db,
+) -> None:
+    db = setup_db
+    reports.get_ia_item_has_one_isbn_13_and_no_link_to_ol(
+        db, reports.REPORT_IA_HAS_ONE_ISBN_13_AND_DOES_NOT_LINK_TO_OL
+    )
+    file = Path(reports.REPORT_IA_HAS_ONE_ISBN_13_AND_DOES_NOT_LINK_TO_OL)
+    assert file.is_file() is True
+    assert "one_isbn_13_and_no_link_to_openlibrary" in file.read_text()
+    assert "links_to_ol_edition_but_ol_does_not_link_to_it" not in file.read_text()
+
+
 # def test_all_reports(setup_db) -> None:
 #     """This just cleans up and verifies reports.all_reports() is facially working."""
 #     db = setup_db

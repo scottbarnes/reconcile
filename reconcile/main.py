@@ -31,8 +31,10 @@ from reports import (
     get_broken_ol_ia_backlinks_after_edition_to_work_resolution0,
     get_broken_ol_ia_backlinks_after_edition_to_work_resolution1,
     get_editions_with_multiple_works,
+    get_ia_item_has_one_isbn_13_and_no_link_to_ol,
     get_ia_links_to_ol_but_ol_edition_has_no_ocaid,
     get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl,
+    get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple,
     get_ia_with_same_ol_edition_id,
     get_ol_edition_has_ocaid_but_no_ia_source_record,
     get_ol_has_ocaid_but_ia_has_no_ol_edition,
@@ -138,7 +140,8 @@ def create_ia_jsonl_table(
     try:
         db.execute(
             "CREATE TABLE ia_jsonl (rowid INTEGER PRIMARY KEY, ocaid TEXT, \
-                ol_edition_id TEXT, sole_isbn_13 INTEGER, isbn_13 TEXT, info TEXT NOT NULL)"
+                ol_edition_id TEXT, sole_isbn_13 INTEGER, multiple_isbn_13 INTEGER, \
+                isbn_13 TEXT, info TEXT NOT NULL)"
         )
     except sqlite3.OperationalError as err:
         print(f"SQLite error: {err}")
@@ -154,8 +157,8 @@ def create_ia_jsonl_table(
 
     print("Parsing and inserting the Internet Archive JSONL data.")
     db.executemany(
-        "INSERT INTO ia_jsonl (ocaid, ol_edition_id, sole_isbn_13, isbn_13, info) \
-                VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO ia_jsonl (ocaid, ol_edition_id, sole_isbn_13, multiple_isbn_13, \
+                isbn_13, info) VALUES (?, ?, ?, ?, ?, ?)",
         parse_ia_inlibrary_jsonl(IA_INLIBRARY_JSONL_DUMP),
     )
 
@@ -252,6 +255,10 @@ def all_reports() -> None:
         get_ia_links_to_ol_but_ol_edition_has_no_ocaid(db)
         print("\n")
         get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(db)
+        print("\n")
+        get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple(db)
+        print("\n")
+        get_ia_item_has_one_isbn_13_and_no_link_to_ol(db)
         print("\n")
         get_ia_with_same_ol_edition_id(db)
         print("\n")

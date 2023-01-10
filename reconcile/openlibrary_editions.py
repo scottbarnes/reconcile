@@ -14,7 +14,7 @@ from database import Database
 from isbnlib import to_isbn13
 from tqdm import tqdm
 
-from reconcile.types import ParsedEdition
+from reconcile.datatypes import ParsedEdition
 from reconcile.utils import (
     bufcount,
     get_bad_isbn_10s,

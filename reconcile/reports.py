@@ -28,6 +28,12 @@ REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID = config.get(
 REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL = config.get(
     CONF_SECTION, "report_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl"
 )
+REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL_MULTIPLE = config.get(
+    CONF_SECTION, "report_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple"
+)
+REPORT_IA_HAS_ONE_ISBN_13_AND_DOES_NOT_LINK_TO_OL = config.get(
+    CONF_SECTION, "report_ia_has_one_isbn_13_and_does_not_link_to_ol"
+)
 REPORT_OL_EDITION_HAS_OCAID_BUT_NO_IA_SOURCE_RECORD = config.get(
     CONF_SECTION, "report_ol_edition_has_ocaid_but_no_source_record"
 )
@@ -160,6 +166,39 @@ def get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl(
     """
     message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID (per the JSONL dump, ensuring the IA item has only one ISBN 13)"  # noqa E501
     result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl()
+    process_result(result, out_file, message)
+
+
+def get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple(
+    db: Database,
+    out_file: str = REPORT_IA_LINKS_TO_OL_BUT_OL_EDITION_HAS_NO_OCAID_JSONL_MULTIPLE,
+) -> None:
+    """
+    Get Internet Archive OCAIDs and corresponding Open Library Edition IDs where
+    Internet Archive links to an Open Library Edition, but the Edition has no OCAID.
+    And there are multiple ISBN 13s.
+
+    :param Database: an instance of the database.py class.
+    :param str out_file: path to the report output.
+    """
+    message = "Total Internet Archive items that link to an Open Library Edition, and that Edition does not have an OCAID (per the JSONL dump, ensuring the IA item has MULTIPLE ISBN 13s)"  # noqa E501
+    result = db.get_ia_links_to_ol_but_ol_edition_has_no_ocaid_jsonl_multiple()
+    process_result(result, out_file, message)
+
+
+def get_ia_item_has_one_isbn_13_and_no_link_to_ol(
+    db: Database,
+    out_file: str = REPORT_IA_HAS_ONE_ISBN_13_AND_DOES_NOT_LINK_TO_OL,
+) -> None:
+    """
+    Get records where Internet Archive has one ISBN 13 and there is no link to Open Library.
+    Does this need to limit the collection?
+
+    :param Database: an instance of the database.py class.
+    :param str out_file: path to the report output.
+    """
+    message = "Total Internet Archive items that have one ISBN 13 and don't link to OL"  # noqa E501
+    result = db.get_ia_item_has_one_isbn_13_and_no_link_to_ol()
     process_result(result, out_file, message)
 
 

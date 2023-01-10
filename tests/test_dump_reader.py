@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from lmdbm import Lmdb
 
+from reconcile.datatypes import ParsedEdition, ParsedRedirect
 from reconcile.dump_reader import (
     make_chunk_ranges,
     process_chunk_lines,
     read_chunk_lines,
     write_processed_chunk_lines_to_disk,
 )
-from reconcile.types import ParsedEdition, ParsedRedirect
 
 
 @pytest.fixture(scope="session")

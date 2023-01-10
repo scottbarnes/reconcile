@@ -1,6 +1,6 @@
 # import pytest
 
-from reconcile.types import ParsedEdition, ParsedRedirect
+from reconcile.datatypes import ParsedEdition, ParsedRedirect
 
 
 def test_parse_redirect_returns_list():
