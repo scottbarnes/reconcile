@@ -12,6 +12,7 @@ from database import Database
 from dump_reader import make_chunk_ranges, process_chunk
 from lmdbm import Lmdb
 from openlibrary_editions import (
+    insert_ol_cover_data_into_cover_db,
     insert_ol_data_in_ol_table,
     pre_create_ol_table_file_cleanup,
     update_ia_editions_from_parsed_tsvs,
@@ -197,8 +198,8 @@ def create_ol_table(
         db.execute(
             "CREATE TABLE ol (ol_edition_id TEXT, ol_work_id TEXT, \
              ol_ocaid TEXT, isbn_13 TEXT, has_multiple_works INTEGER, \
-             has_ia_source_record INTEGER, resolved_ol_edition_id TEXT, \
-             resolved_ol_work_id TEXT)"
+             has_ia_source_record INTEGER, has_cover INTEGER, \
+             resolved_ol_edition_id TEXT, resolved_ol_work_id TEXT)"
         )
     except sqlite3.OperationalError as err:
         print(f"SQLite error: {err}")
@@ -316,12 +317,20 @@ def resolve_redirects() -> None:
     build_ia_ol_edition_to_ol_work_column(db, redirect_db, map_db)
 
 
+@app.command()
+def create_cover_db() -> None:
+    db = Database("./bwb-cover-bot.sqlite")
+    insert_ol_cover_data_into_cover_db(db)
+
+
 @app.callback()
 def main() -> None:
     """
     The order to run these in: (1) fetch, (2) create-db, and (3) all-reports
 
     Note: resolve-redirects is not currently used in any reports and isn't helpful.
+
+    Note: if creating the cover DB, create-db  must be run first.
     """
     # Create necessary paths
     paths = [FILES_DIR, REPORTS_DIR]

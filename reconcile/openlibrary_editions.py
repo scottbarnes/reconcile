@@ -4,6 +4,7 @@ This is used by create_ol_table() from main.py.
 """
 import configparser
 import mmap
+import sqlite3
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -56,7 +57,7 @@ def pre_create_ol_table_file_cleanup() -> None:
             p.unlink()
 
 
-def process_edition_line(row: list[str]) -> ParsedEdition:
+def process_edition_line(row: list[str]) -> ParsedEdition:  # noqa: C901
     """
     For each decoded line in the editions dump, process it to get values for insertion
     into the database.
@@ -70,6 +71,7 @@ def process_edition_line(row: list[str]) -> ParsedEdition:
     ol_work_id: str | None = None
     has_multiple_works: int = 0  # No boolean in SQLite
     has_ia_source_record: int = 0
+    has_cover: int = 0
     d: dict[str, Any] = orjson.loads(row[4])
 
     ol_ocaid = d.get("ocaid", None)
@@ -101,9 +103,16 @@ def process_edition_line(row: list[str]) -> ParsedEdition:
                 REPORT_BAD_ISBNS,
             )
 
+    # Used to help supplement BWBCoverBot's database of editions with covers.
+    covers = d.get("covers")
+    if covers and len(covers) > 0:
+        has_cover = 1
+
     # Attempt to get one ISBN for comparison with Internet Archive items.
     isbns = set(isbn_13s or {})
     isbns.update({to_isbn13(isbn) for isbn in isbn_10s or {}})
+    # With every ISBN as ISBN 13 and deduplicated, save them all for BWBCoverBot.
+    isbn_13s_for_covers = ",".join(isbns)
     try:
         isbn_13 = isbns.pop()
     except KeyError:
@@ -116,6 +125,8 @@ def process_edition_line(row: list[str]) -> ParsedEdition:
         isbn_13=isbn_13,
         has_multiple_works=has_multiple_works,
         has_ia_source_record=has_ia_source_record,
+        has_cover=has_cover,
+        isbn_13s=isbn_13s_for_covers,
     )
 
 
@@ -136,13 +147,12 @@ def insert_ol_data_in_ol_table(
     def get_ol_rows() -> Iterator[Sequence[str | None]]:
         """
         Read {filename} in TSV format, decode the lines, and yield them.
-        Format of decoded line:
-        edition_id, work_id, ocaid, has_multiple_works, has_ia_source_record,
-        resolved_work_id, isbn_13
-        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi  012345678X  0  1  ""
+        Format of decoded line, formatted by ParsedEdition.to_list():
+        edition_id, work_id, ocaid, isbn_13, has_multiple_works, has_ia_source_record, has_cover isbn_13s
+        e.g. OL12459902M OL9945028W  mafamillemitterr0000cahi  1234567890123  0  1  1 ""
 
         Returns the same data as a list, but everything is a string (or None).
-        ["OL12459902M", "OL9945028W", "mafamillemitterr0000cahi", "012345678X", "0", "1", None]
+        ["OL12459902M", "OL9945028W", "mafamillemitterr0000cahi", "1234567890123", "0", "1", "1", ""]
         """
         pbar = tqdm(total=total)
         for file in files:
@@ -150,10 +160,13 @@ def insert_ol_data_in_ol_table(
                 mm = mmap.mmap(fp.fileno(), 0)
                 for line in iter(mm.readline, b""):
                     row = line.decode("utf-8").split("\t")
+                    # Because another function reads isbn_13s, we can pop the index of it as
+                    # it is not needed here and doesn't go into the database.
+                    row.pop()
                     # Convert empty strings to None because in CSV None is stored as "".
                     nulled_row = [nuller(column) for column in row]
                     pbar.update(1)
-                    if len(nulled_row) != 6:
+                    if len(nulled_row) != 7:
                         record_errors(nulled_row, REPORT_ERRORS)
                         continue
                     nulled_row += (
@@ -164,7 +177,65 @@ def insert_ol_data_in_ol_table(
 
     collection = get_ol_rows()
     db.execute("PRAGMA synchronous = OFF")
-    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?, ?, ?)", collection)
+    db.executemany("INSERT INTO ol VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", collection)
+    db.commit()
+
+
+def insert_ol_cover_data_into_cover_db(  # noqa: C901
+    db: Database, filename: str = OL_DUMP_PARSED_PREFIX
+) -> None:
+    """
+    Read the data files from the already parsed Open Library dump to pull out ISBNs with covers
+    so that they can be written to ./bwb-cover-bot.sqlite for use by BWBCoverBot.
+    """
+    print("Note: OL data must be inserted first as this reads files that creates.")
+
+    try:
+        db.execute(
+            "CREATE TABLE EditionCoverData (isbn_13 TEXT PRIMARY KEY, cover_exists INTEGER)"
+        )
+    except sqlite3.OperationalError as err:
+        print(f"SQLite error: {err}")
+        print("You may need to delete ./bwb-cover-bot.sqlite.")
+        sys.exit(1)
+
+    path = Path(filename)
+
+    files = list(Path(FILES_DIR).glob(f"{path.stem}_edition_*{path.suffix}"))
+    lines = [bufcount(f) for f in files]
+    total = sum(lines)
+
+    def get_ol_rows() -> Iterator[tuple[str, int]]:
+        """
+        For each ParsedEdition written to the CSV files this reads, check if has_isbn = 1, and
+        if it is, process the string of ISBNs that corresponds to ParsedEdition.isbn_13s,
+        returning a tuple of (isbn13, 1), corresponding to isbn_13, and cover_exists in the DB.
+        """
+        pbar = tqdm(total=total)
+        for file in files:
+            with file.open(mode="r+b") as fp:
+                mm = mmap.mmap(fp.fileno(), 0)
+                for line in iter(mm.readline, b""):
+                    pbar.update(1)
+                    row = line.decode("utf-8").split("\t")
+                    # Check for has_cover
+                    if row[6] != "1":
+                        continue
+
+                    try:
+                        isbns = row[7].split(",")  # Unpack possible multiple ISBN 13s.
+
+                        for isbn in isbns:
+                            isbn = isbn.strip()
+                            if isbn:
+                                yield (isbn, 1)
+                    except IndexError:
+                        continue
+
+    collection = get_ol_rows()
+    db.execute("PRAGMA synchronous=0")
+    db.execute("PRAGMA journal_mode=wal")
+    db.executemany("INSERT OR IGNORE INTO EditionCoverData VALUES (?, ?)", collection)
     db.commit()
 
 

@@ -26,6 +26,10 @@ class ParsedEdition:
     isbn_13: str = ""
     has_multiple_works: int = 0
     has_ia_source_record: int = 0
+    has_cover: int = 0
+    isbn_13s: str = (
+        ""  # This becomes a CSV of the ISBNs because they're written to a file.
+    )
 
     def to_list(self) -> list[str | int | None]:
         return [
@@ -35,4 +39,6 @@ class ParsedEdition:
             self.isbn_13,
             self.has_multiple_works,
             self.has_ia_source_record,
+            self.has_cover,
+            self.isbn_13s,
         ]

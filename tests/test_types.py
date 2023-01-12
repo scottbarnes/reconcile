@@ -16,6 +16,8 @@ def test_parse_edition_returns_list():
         isbn_13="1234567890123",
         has_multiple_works=0,
         has_ia_source_record=1,
+        has_cover=0,
+        isbn_13s="123,456",
     )
     assert edition.to_list() == [
         "OL001M",
@@ -24,4 +26,6 @@ def test_parse_edition_returns_list():
         "1234567890123",
         0,
         1,
+        0,
+        "123,456",
     ]

@@ -10,7 +10,10 @@ from reconcile import __version__
 from reconcile.database import Database
 from reconcile.datatypes import ParsedEdition
 from reconcile.main import create_ia_jsonl_table, create_ia_table, create_ol_table
-from reconcile.openlibrary_editions import process_edition_line
+from reconcile.openlibrary_editions import (
+    insert_ol_cover_data_into_cover_db,
+    process_edition_line,
+)
 from reconcile.utils import (
     bufcount,
     get_bad_isbn_10s,
@@ -113,7 +116,10 @@ def setup_db():
 
 
 def test_create_db_inserts_data() -> None:
-    """Get an item from the ia and ol tables."""
+    """
+    Get an item from the ia and ol tables. The data is seeded in from
+    seed_ol_dump_all.txt.
+    """
     db = Database(SQLITE_DB)
     create_ia_table(db)
     create_ol_table(db)
@@ -132,10 +138,37 @@ def test_create_db_inserts_data() -> None:
             "9780201570519",
             1,
             1,
+            1,
             "",
             "",
         )
     ]
+
+
+def test_insert_ol_cover_data_into_cover_db() -> None:
+    """
+    Ensure the cover DB gets created and populated properly. The
+    data is seeded from seed_ol_dump_all.txt
+    """
+    db = Database(":memory:")
+    create_ia_table(db)  # Just for the side effect of creating the processed files.
+    create_ol_table(db)  # Just for the side effect of creating the processed files.
+    insert_ol_cover_data_into_cover_db(db=db)
+
+    # 9781933060224 is preset multiple times in seed_ol_dump_all.txt,
+    # so this tests the unique constraint on the primary key.
+    db.execute(
+        """SELECT isbn_13, cover_exists FROM EditionCoverData WHERE
+              isbn_13 = '9781933060224'"""
+    )
+    assert db.fetchall() == [("9781933060224", 1)]
+
+    # 9780465052998 has no cover, so it shouldn't be here.
+    db.execute(
+        """SELECT isbn_13, cover_exists FROM EditionCoverData WHERE
+              isbn_13 = '9780465052998'"""
+    )
+    assert db.fetchall() == []
 
 
 def test_get_items_from_ia_jsonl_table(setup_db) -> None:
@@ -175,7 +208,7 @@ def test_get_items_from_ia_jsonl_table(setup_db) -> None:
 def test_process_line() -> None:
     """Process a row from the Open Library editions dump."""
 
-    # Edition has multiple works, ocaid, and ia source_record.
+    # Edition has multiple works, ocaid, and ia source_record, and two ISBN 10s
     multi_works_source_rec = [
         "type/edition",
         "/books/OL1002158M",
@@ -208,6 +241,8 @@ def test_process_line() -> None:
             isbn_13="9780201570519",
             has_multiple_works=1,
             has_ia_source_record=1,
+            has_cover=1,
+            isbn_13s="9780201570519",
         )
     )
     assert process_edition_line(noocaid_nomulti_no_ia) == (
@@ -218,6 +253,8 @@ def test_process_line() -> None:
             isbn_13="9780107805548",
             has_multiple_works=0,
             has_ia_source_record=0,
+            has_cover=0,
+            isbn_13s="9780107805548",
         )
     )
     assert process_edition_line(no_work) == ParsedEdition(
@@ -227,9 +264,12 @@ def test_process_line() -> None:
         isbn_13="9780107805548",
         has_multiple_works=0,
         has_ia_source_record=0,
+        has_cover=0,
+        isbn_13s="9780107805548",
     )
 
 
+# Checking and logging bad ISBNs
 def test_process_line_and_validate_isbn() -> None:
     p = Path(REPORT_BAD_ISBNS)
     if p.is_file():
@@ -245,6 +285,27 @@ def test_process_line_and_validate_isbn() -> None:
     process_edition_line(edition)
     assert "XYZ" in p.read_text()
     assert "X111111111" in p.read_text()
+
+
+# TODO: Consider refactoring how ISBNs are handled throughout.
+# Test editions that have multiple ISBN 13s, once all ISBNs are converted from 10.
+# This is tested independently because the ISBNs are in a set, and normally only
+# one is popped off as the functionality was just taking one ISBN 13. Rather than
+# rewriting the functionality there, just test separately here.
+def test_process_line_with_multiple_isbn13s() -> None:
+    multi_isbn_13_source = [
+        "type/edition",
+        "/books/OL1002158M",
+        "11",
+        "2021-02-12T23:39:01.417876",
+        r"""{"publishers": ["Addison-Wesley"], "identifiers": {"librarything": ["286951"], "goodreads": ["894978"]}, "subtitle": "the secrets of creative collaboration", "ia_box_id": ["IA150601"], "isbn_10": ["0201570513", "145167550X"], "isbn_13": ["1234567890123"], "covers": [3858623], "ia_loaded_id": ["organizinggenius00benn"], "lc_classifications": ["HD58.9 .B45 1997"], "key": "/books/OL1002158M", "authors": [{"key": "/authors/OL225457A"}], "publish_places": ["Reading, Mass"], "contributions": ["Biederman, Patricia Ward."], "pagination": "xvi, 239 p. ;", "source_records": ["marc:marc_records_scriblio_net/part25.dat:199740929:947", "marc:marc_cca/b10621386.out:27805251:1544", "ia:organizinggenius00benn", "marc:marc_loc_2016/BooksAll.2016.part25.utf8:105728045:947", "ia:organizinggenius0000benn"], "title": "Organizing genius", "dewey_decimal_class": ["158.7"], "notes": {"type": "/type/text", "value": "Includes bibliographical references (p. 219-229) and index.\n\"None of us is as smart as all of us.\""}, "number_of_pages": 239, "languages": [{"key": "/languages/eng"}], "lccn": ["96041454"], "subjects": ["Organizational effectiveness -- Case studies", "Strategic alliances (Business) -- Case studies", "Creative thinking -- Case studies", "Creative ability in business -- Case studies"], "publish_date": "1997", "publish_country": "mau", "by_statement": "Warren Bennis, Patricia Ward Biederman.", "works": [{"key": "/works/OL1883432W"}, {"key": "/works/OL0000000W"}], "type": {"key": "/type/edition"}, "ocaid": "organizinggenius0000benn", "latest_revision": 11, "revision": 11, "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "last_modified": {"type": "/type/datetime", "value": "2021-02-12T23:39:01.417876"}}""",  # noqa E501
+    ]
+    edition = process_edition_line(multi_isbn_13_source)
+
+    # The order of the ISBN 13s isn't stable, so just check that each one is there.
+    assert "1234567890123" in edition.isbn_13s
+    assert "9780201570519" in edition.isbn_13s
+    assert "9781451675504" in edition.isbn_13s
 
 
 ################

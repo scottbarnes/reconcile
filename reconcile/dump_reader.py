@@ -89,9 +89,8 @@ def process_chunk_lines(
     ['/type/edition', '/books/OL5756837M', '9', 'datetimestmap', '{JSON}']
     ['/type/redirect', '/authors/OL10219261A', '2', 'datetimestmap', '{"location": "/authors/OL3894951A"}']  # noqa E501
 
-    Lines are then processed by their respective parsers, and a tuple is created to pass
-    to the disk writer. E.g., for the above edition this will return:
-    ('edition', ('OL5756837M', 'OL6600544W', 'guidetojohnmuirt0000star', 0, 0))
+    Lines are then processed by their respective parsers, and a ParsedEdition Or ParsedRedirect
+    is created to pass to write_processed_chunk_lines_to_disk().
     """
     for line in lines:
         match line[0]:
@@ -122,9 +121,6 @@ def write_processed_chunk_lines_to_disk(
     """
     Iterate through {lines} from process_chunk_lines() and write the lines to the
     relevant file based on the Open Library type found at index 0 of the tuple.
-
-    E.g. for an edition, input looks like:
-    ('edition', ('OL5756837M', 'OL6600544W', 'guidetojohnmuirt0000star', 0, 0))
     """
     path = Path(output_base)
 
