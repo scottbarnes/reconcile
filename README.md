@@ -69,8 +69,8 @@ The commands aren't quite in order but the steps are:
 
 Fetch the exported database data. This takes me about 8 minutes.
 Note: This is a convenience function. The data can be manually into /your/path/to/reconcile/files
-- Open Library Editions dump: https://openlibrary.org/data/ol_dump_latest.txt.gz
-- The newest Internet Archive physical_direct.tsv: https://archive.org/download/ia-abc-historical-data/ (it's near the bottom)
+- Open Library Editions dump: https://openlibrary.org/data/ol_dump_latest.txt.gz. Default filepath: `files/ol_dump_latest.txt`.
+- The newest Internet Archive physical_direct.tsv: https://archive.org/download/ia-abc-historical-data/ (it's near the bottom). Default filepath: `files/ia_inlibrary_latest.jsonl`
 
 `poetry run python reconcile/main.py create-db`
 
